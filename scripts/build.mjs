@@ -39,7 +39,7 @@ export function patchLlamaWorker(code) {
       "    if (outputPtr == null || outputPtr === 0 || outputPtr === 0n) {",
       "      throw new Error('wllama native ' + argAction + ' failed: ' + (lastNativeError || 'no native error detail'));",
       "    }"
-    ].join('\\n')],
+    ].join('\n')],
     ["    // copy the output buffer to JS heap", [
       "    // C++ exceptions leave the original GLUE magic (0x45554c47) at inputPtr.",
       "    // Reject invalid response sizes instead of allocating a bogus huge array.",
@@ -48,7 +48,7 @@ export function patchLlamaWorker(code) {
       "      throw new Error('Invalid native GLUE response (' + argAction + ', length=' + outputLen + '): ' + (lastNativeError || 'backend did not write a valid response'));",
       "    }",
       "    // copy the output buffer to JS heap"
-    ].join('\\n')]
+    ].join('\n')]
   ];
   let patched = code;
   for (const [before, after] of substitutions) {

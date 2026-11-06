@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { readFile, mkdtemp, rm } = require('node:fs/promises');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 test('patched worker catches null native result and unread GLUE header before allocation', async () => {
   const { generateWorkers } = await import('../scripts/build.mjs');
@@ -10,6 +11,8 @@ test('patched worker catches null native result and unread GLUE header before al
   try {
     await generateWorkers({ destination });
     const code = await readFile(join(destination, 'llama-worker.js'), 'utf8');
+    const parsed = spawnSync(process.execPath, ['--check', join(destination, 'llama-worker.js')], { encoding: 'utf8' });
+    assert.equal(parsed.status, 0, parsed.stderr);
     assert.match(code, /let lastNativeError = ''/);
     assert.match(code, /if \(outputPtr == null \|\| outputPtr === 0 \|\| outputPtr === 0n\)/);
     assert.match(code, /outputLen < 16 \|\| outputLen > 16 \* 1024 \* 1024/);
