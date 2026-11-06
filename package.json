@@ -1,6 +1,6 @@
 {
   "name": "plamo-page-translate",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Chrome MV3 full-page offline translation with PLaMo 3 Translate 2B GGUF + WebGPU",
   "scripts": {

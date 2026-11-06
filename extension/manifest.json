@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "PLaMo Page Translate",
   "description": "PLaMo 3 Translate 2Bでページ全体をWebGPU上で翻訳（ローカル推論、サーバー不要）",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minimum_chrome_version": "124",
   "permissions": ["activeTab", "scripting", "storage", "offscreen", "unlimitedStorage"],
   "host_permissions": ["https://huggingface.co/*", "https://*.huggingface.co/*", "https://*.hf.co/*", "https://*.xethub.hf.co/*"],

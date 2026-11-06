@@ -66,16 +66,28 @@ async function start() {
 }
 async function doTranslate(text) {
   if (state.phase !== 'ready' || !model?.isModelLoaded()) {
-    throw new Error('モデルが準備できていません。「モデルを準備」を先に実行してください。');
+    throw new Error(state.error || 'モデルが準備できていません。「モデルを準備」を先に実行してください。');
   }
   if (typeof text !== 'string' || text.trim().length === 0 || text.length > 1200) {
     throw new Error('無効な翻訳対象です。');
   }
-  const response = await model.createCompletion({
-    prompt: prompt(text), temperature: 0,
-    max_tokens: Math.min(1600, Math.max(128, Math.ceil(text.length * 2))),
-    stop: STOP, stream: false
-  });
+  let response;
+  try {
+    response = await model.createCompletion({
+      prompt: prompt(text), temperature: 0,
+      max_tokens: Math.min(1600, Math.max(128, Math.ceil(text.length * 2))),
+      stop: STOP, stream: false
+    });
+  } catch (error) {
+    // A failed native inference may have left the WASM runtime in a bad state.
+    // Stop promptly rather than attempting hundreds of doomed translations.
+    state.error = '推論エンジンエラー: ' + String(error?.message || error);
+    report('error', 'WebGPU推論に失敗しました。「モデルを準備」で再初期化してください。');
+    const failed = model;
+    model = undefined;
+    try { await failed?.exit(); } catch { /* worker may already be dead */ }
+    throw new Error(state.error + '（モデルを再準備してください。キャッシュは保持されます）');
+  }
   if (response?.choices?.[0]?.finish_reason === 'length') throw new Error('訳文が途中で切れました。');
   const raw = response?.choices?.[0]?.text;
   if (typeof raw !== 'string') throw new Error('モデルの応答形式が不正です。');

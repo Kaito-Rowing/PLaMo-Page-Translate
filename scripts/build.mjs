@@ -23,6 +23,41 @@ function mustContain(haystack, needle, name) {
   if (!haystack.includes(needle)) throw new Error(`wllama ${name} signature changed: ${needle}`);
 }
 
+/**
+ * wllama 3.8.1 native wllama_action returns nullptr on C++ exceptions without
+ * overwriting its GLUE input header with a response length. 0x45554c47 then
+ * becomes a bogus 1.16GB allocation. Validate the native pointer and result
+ * before allocating, and retain the native C++ error message for diagnosis.
+ */
+export function patchLlamaWorker(code) {
+  const substitutions = [
+    ["let lastStack = '';", "let lastStack = '';\nlet lastNativeError = '';"],
+    ["      const logLine = cppLogToJSLog(text);", "      const logLine = cppLogToJSLog(text);\n      if (logLine.level === 'error') lastNativeError = logLine.text;"],
+    ["    const outputPtr = await wllamaAction(argAction, inputPtr);", [
+      "    lastNativeError = '';",
+      "    const outputPtr = await wllamaAction(argAction, inputPtr);",
+      "    if (outputPtr == null || outputPtr === 0 || outputPtr === 0n) {",
+      "      throw new Error('wllama native ' + argAction + ' failed: ' + (lastNativeError || 'no native error detail'));",
+      "    }"
+    ].join('\\n')],
+    ["    // copy the output buffer to JS heap", [
+      "    // C++ exceptions leave the original GLUE magic (0x45554c47) at inputPtr.",
+      "    // Reject invalid response sizes instead of allocating a bogus huge array.",
+      "    if (outputLen < 16 || outputLen > 16 * 1024 * 1024 ||",
+      "        !Number.isSafeInteger(Number(outputPtr)) || Number(outputPtr) + outputLen > getHeapU8().byteLength) {",
+      "      throw new Error('Invalid native GLUE response (' + argAction + ', length=' + outputLen + '): ' + (lastNativeError || 'backend did not write a valid response'));",
+      "    }",
+      "    // copy the output buffer to JS heap"
+    ].join('\\n')]
+  ];
+  let patched = code;
+  for (const [before, after] of substitutions) {
+    if (!patched.includes(before)) throw new Error('wllama worker signature changed: ' + before.slice(0, 70));
+    patched = patched.replace(before, after);
+  }
+  return patched;
+}
+
 export async function generateWorkers({ generatedPath = sourceFiles.generated, workerPath = sourceFiles.worker, destination = wllamaDist } = {}) {
   const [generated, worker] = await Promise.all([readFile(generatedPath, 'utf8'), readFile(workerPath, 'utf8')]);
   const llama = constant(generated, 'LLAMA_CPP_WORKER_CODE');
@@ -33,7 +68,7 @@ export async function generateWorkers({ generatedPath = sourceFiles.generated, w
   const moduleSource = stub + emscripten;
   mustContain(moduleSource, 'var Module', 'emscripten module');
   mustContain(llama, '? argMainScriptBlob', 'llama cpp worker');
-  const pthreadStatic = llama.replace('? argMainScriptBlob', '? RUN_OPTIONS.moduleUrl');
+  const pthreadStatic = patchLlamaWorker(llama).replace('? argMainScriptBlob', '? RUN_OPTIONS.moduleUrl');
   // `Module` is deliberately renamed in wModuleInit to prevent shadowing the worker's Module.
   const moduleInWorker = moduleSource.replace('var Module', 'var ___Module');
   const workerSource = `// Static MV3 worker generated from pinned wllama.\nconst RUN_OPTIONS = JSON.parse(new URLSearchParams(self.location.search).get('o') || '{}');\nfunction wModuleInit() { ${moduleInWorker}; return Module; }\n${pthreadStatic}\n`;
