@@ -4,81 +4,94 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
-function makeBackground(fetcher) {
-  const root = path.resolve(__dirname, '../extension');
+function makeBackground({ engineReady = true } = {}) {
+  const folder = path.resolve(__dirname, '../extension');
   let listener = null;
+  let documentCreated = false;
+  let createCalls = 0;
+  const engineCalls = [];
   const storage = new Map();
-  const ctx = vm.createContext({
-    URL, AbortController, setTimeout, clearTimeout, console, fetch: fetcher,
-    chrome: {
-      runtime: { id: 'test-extension', onMessage: { addListener(fn) { listener = fn; } } },
-      storage: { local: {
-        get: async (key) => ({ [key]: storage.get(key) }),
-        set: async (value) => { for (const [key, val] of Object.entries(value)) storage.set(key, val); }
-      } }
-    }
-  });
-  ctx.importScripts = (filename) => {
-    vm.runInContext(fs.readFileSync(path.join(root, filename), 'utf8'), ctx, { filename });
+  const chrome = {
+    runtime: {
+      id: 'test-extension',
+      getURL: (path) => `chrome-extension://test-extension/${path}`,
+      getContexts: async () => documentCreated ? [{ documentUrl: 'chrome-extension://test-extension/offscreen.html' }] : [],
+      sendMessage: async (message) => {
+        engineCalls.push(message);
+        if (message.action === 'STATUS') return { ok: true, phase: engineReady ? 'ready' : 'idle' };
+        if (message.action === 'START') return { ok: true, phase: 'downloading' };
+        if (message.action === 'TRANSLATE') return { ok: true, translation: '翻訳済み:' + message.text };
+        throw new Error('unexpected message');
+      },
+      onMessage: { addListener(fn) { listener = fn; } }
+    },
+    offscreen: { createDocument: async () => { createCalls++; documentCreated = true; } },
+    storage: { local: {
+      get: async (key) => ({ [key]: storage.get(key) }),
+      set: async (value) => { for (const [key, val] of Object.entries(value)) storage.set(key, val); }
+    } }
   };
-  vm.runInContext(fs.readFileSync(path.join(root, 'background.js'), 'utf8'), ctx);
+  const ctx = vm.createContext({ URL, setTimeout, clearTimeout, console, chrome });
+  ctx.importScripts = (filename) => {
+    vm.runInContext(fs.readFileSync(path.join(folder, filename), 'utf8'), ctx, { filename });
+  };
+  vm.runInContext(fs.readFileSync(path.join(folder, 'background.js'), 'utf8'), ctx);
   function message(input, senderId = 'test-extension') {
     return new Promise((resolve) => {
-      const async = listener(input, { id: senderId }, resolve);
-      if (!async) resolve(undefined);
+      const asynchronous = listener(input, { id: senderId }, resolve);
+      if (!asynchronous) resolve(undefined);
     });
   }
-  return { message, storage };
+  return { message, storage, engineCalls, getCreateCalls: () => createCalls };
 }
 
-test('checks the loopback health endpoint', async () => {
-  const urls = [];
-  const service = makeBackground(async (url) => {
-    urls.push(url);
-    return { ok: true };
-  });
-  const result = await service.message({ type: 'CHECK_SERVER' });
-  assert.equal(result.ok, true);
-  assert.equal(urls[0], 'http://127.0.0.1:8000/health');
+test('returns idle when model was not prepared, without opening an offscreen document', async () => {
+  const app = makeBackground();
+  const state = await app.message({ type: 'ENGINE_STATUS' });
+  assert.equal(state.phase, 'idle');
+  assert.equal(app.getCreateCalls(), 0);
 });
 
-test('translates using the official template, caches repeats and deduplicates inflight requests', async () => {
-  const payloads = [];
-  const service = makeBackground(async (url, options) => {
-    assert.equal(url, 'http://127.0.0.1:8000/v1/chat/completions');
-    payloads.push(JSON.parse(options.body));
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    return {
-      ok: true,
-      json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: 'ようこそ' } }] })
-    };
-  });
-  const [one, two] = await Promise.all([
-    service.message({ type: 'TRANSLATE_TEXT', text: 'Welcome' }),
-    service.message({ type: 'TRANSLATE_TEXT', text: 'Welcome' })
+test('prepares the offscreen model host just once and checks status', async () => {
+  const app = makeBackground();
+  const [first, second] = await Promise.all([
+    app.message({ type: 'ENGINE_PREPARE' }), app.message({ type: 'ENGINE_PREPARE' })
   ]);
-  const three = await service.message({ type: 'TRANSLATE_TEXT', text: 'Welcome' });
-  assert.equal(one.translation, 'ようこそ');
-  assert.equal(two.translation, 'ようこそ');
-  assert.equal(three.translation, 'ようこそ');
-  assert.equal(payloads.length, 1);
-  assert.equal(payloads[0].chat_template_kwargs.target_lang, 'ja');
-  assert.equal(payloads[0].chat_template_kwargs.form, 'plain');
-  assert.deepEqual(payloads[0].stop, ['<|plamo:tag|>', '<|plamo:bos|>']);
+  assert.equal(first.phase, 'downloading');
+  assert.equal(second.phase, 'downloading');
+  assert.equal(app.getCreateCalls(), 1);
+  assert.equal((await app.message({ type: 'ENGINE_STATUS' })).phase, 'ready');
 });
 
-test('does not accept arbitrary senders or invalid translation requests', async () => {
-  let calls = 0;
-  const service = makeBackground(async () => { calls++; throw new Error('not reached'); });
-  assert.equal(await service.message({ type: 'TRANSLATE_TEXT', text: 'Hello' }, 'website'), undefined);
-  const response = await service.message({ type: 'TRANSLATE_TEXT', text: '123456' });
-  assert.equal(response.ok, false);
-  assert.equal(calls, 0);
+test('translates using offscreen WebGPU only, deduplicates concurrent messages and caches translation', async () => {
+  const app = makeBackground();
+  await app.message({ type: 'ENGINE_PREPARE' });
+  const results = await Promise.all([
+    app.message({ type: 'TRANSLATE_TEXT', text: 'Hello world' }),
+    app.message({ type: 'TRANSLATE_TEXT', text: 'Hello world' })
+  ]);
+  assert.equal(results[0].translation, '翻訳済み:Hello world');
+  assert.equal(results[1].translation, '翻訳済み:Hello world');
+  const again = await app.message({ type: 'TRANSLATE_TEXT', text: 'Hello world' });
+  assert.equal(again.translation, '翻訳済み:Hello world');
+  assert.equal(app.engineCalls.filter((x) => x.action === 'TRANSLATE').length, 1);
 });
 
-test('returns a readable error when the local server is unavailable', async () => {
-  const service = makeBackground(async () => { throw new TypeError('Failed to fetch'); });
-  const response = await service.message({ type: 'TRANSLATE_TEXT', text: 'Hello' });
-  assert.equal(response.ok, false);
-  assert.match(response.error, /接続/);
+test('rejects web page senders, unsupported requests and translation before model preparation', async () => {
+  const app = makeBackground();
+  assert.equal(await app.message({ type: 'ENGINE_PREPARE' }, 'untrusted-page'), undefined);
+  assert.equal(await app.message({ type: 'PLAMO_ENGINE', target: 'PLAMO_ENGINE' }), undefined);
+  assert.equal((await app.message({ type: 'TRANSLATE_TEXT', text: '123456' })).ok, false);
+  const result = await app.message({ type: 'TRANSLATE_TEXT', text: 'Hello' });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /モデルを準備/);
+});
+
+test('manifest requires no local server and all scripts run under MV3 CSP', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'extension', 'manifest.json'), 'utf8'));
+  assert.equal(manifest.manifest_version, 3);
+  assert.ok(manifest.permissions.includes('offscreen'));
+  assert.match(manifest.content_security_policy.extension_pages, /wasm-unsafe-eval/);
+  assert.doesNotMatch(JSON.stringify(manifest), /localhost|127\.0\.0\.1/);
+  assert.ok(manifest.host_permissions.some((x) => x.startsWith('https://huggingface.co')));
 });

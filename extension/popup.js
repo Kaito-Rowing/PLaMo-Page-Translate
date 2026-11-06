@@ -1,94 +1,110 @@
 (() => {
-  "use strict";
+  'use strict';
   const $ = (id) => document.getElementById(id);
-  const translateButton = $("translate");
-  const restoreButton = $("restore");
+  const translateButton = $('translate');
+  const restoreButton = $('restore');
+  const prepareButton = $('prepare');
   let tabId = null;
-  let available = false;
+  let canEditPage = false;
   let busy = false;
+  let modelReady = false;
 
-  function setMessage(text) { $("message").textContent = text; }
-  function setServer(ok, message) {
-    $("server-dot").className = `dot ${ok === null ? "checking" : ok ? "online" : "offline"}`;
-    $("server-status").textContent = ok === null ? "接続確認中…" : ok ? "翻訳サーバーに接続済み" : "サーバー未接続";
-    if (!ok && message) setMessage(message);
+  function message(text) { $('message').textContent = text; }
+
+  async function checkEngine() {
+    try {
+      const state = await chrome.runtime.sendMessage({ type: 'ENGINE_STATUS' });
+      const phase = state?.phase || 'error';
+      const ready = phase === 'ready';
+      modelReady = ready;
+      $('server-dot').className = `dot ${ready ? 'online' : phase === 'error' ? 'offline' : 'checking'}`;
+      const names = { idle: 'モデル未準備', downloading: 'モデル取得中', loading: 'GPUへ読み込み中', ready: 'モデル準備完了', error: 'モデルの読み込みに失敗' };
+      $('server-status').textContent = names[phase] || '状態確認中';
+      $('model-message').textContent = state?.error || state?.message || 'モデルの状態を取得できません。';
+      const percent = state?.total > 0 ? Math.min(100, (state.loaded / state.total) * 100) : ready ? 100 : 0;
+      $('download-bar').style.width = `${percent}%`;
+      prepareButton.disabled = phase === 'loading' || phase === 'downloading' || ready;
+      prepareButton.textContent = ready ? 'モデル準備完了' : phase === 'loading' || phase === 'downloading' ? 'モデル準備中…' : 'モデルを準備（初回約1.81GB）';
+      translateButton.disabled = !ready || !canEditPage || busy;
+    } catch (error) {
+      modelReady = false;
+      $('server-dot').className = 'dot offline';
+      $('server-status').textContent = '推論エンジン接続エラー';
+      $('model-message').textContent = String(error?.message || error);
+      translateButton.disabled = true;
+    }
   }
 
-  async function checkServer() {
-    setServer(null);
+  async function prepare() {
+    prepareButton.disabled = true;
     try {
-      const response = await chrome.runtime.sendMessage({ type: "CHECK_SERVER" });
-      setServer(response?.ok === true, response?.error);
-    } catch {
-      setServer(false, "バックグラウンド処理に接続できません。");
-    }
+      const result = await chrome.runtime.sendMessage({ type: 'ENGINE_PREPARE' });
+      if (!result?.ok) throw new Error(result?.error || 'モデルを準備できません。');
+    } catch (error) {
+      $('model-message').textContent = String(error?.message || error);
+    } finally { await checkEngine(); }
   }
 
   function showStatus(status) {
     if (!status) return;
-    const processed = status.completed + status.failed + status.skipped;
-    const percent = status.total > 0 ? Math.min(100, (processed / status.total) * 100) : 0;
-    $("bar").style.width = `${percent}%`;
-    $("count").textContent = `${processed} / ${status.total}`;
-    const labels = { idle: "待機中", translating: "翻訳中", translated: "翻訳完了", error: "翻訳を中断" };
-    $("phase").textContent = labels[status.phase] || "待機中";
-    restoreButton.disabled = !available || status.phase === "idle" || busy;
-    translateButton.disabled = !available || busy || status.phase === "translating";
-    translateButton.textContent = status.phase === "translated" ? "追加された文章も翻訳" : "ページ全体を翻訳";
-
-    if (status.phase === "error") setMessage(status.lastError || "翻訳中にエラーが発生しました。");
-    else if (status.phase === "translating") setMessage("表示中のテキストから順に翻訳しています。ページを閉じても処理は続きます。");
-    else if (status.phase === "translated") {
-      const suffix = status.limited ? "（翻訳対象が多いため、一部を省略しました）" : "";
-      setMessage(`翻訳済み ${status.completed} 件 / エラー ${status.failed} 件 ${suffix}`);
-    } else if (available) setMessage("翻訳ボタンでページ本文やボタンなどを日本語にします。");
+    const done = status.completed + status.failed + status.skipped;
+    $('bar').style.width = `${status.total ? Math.min(100, 100 * done / status.total) : 0}%`;
+    $('count').textContent = `${done} / ${status.total}`;
+    $('phase').textContent = ({ idle: '待機中', translating: '翻訳中', translated: '翻訳完了', error: '翻訳エラー' })[status.phase] || '待機中';
+    restoreButton.disabled = !canEditPage || busy || status.phase === 'idle';
+    translateButton.disabled = !canEditPage || busy || !modelReady || status.phase === 'translating';
+    translateButton.textContent = status.phase === 'translated' ? '追加の文章を翻訳' : 'ページ全体を翻訳';
+    if (status.phase === 'error') message(status.lastError || '翻訳に失敗しました。');
+    else if (status.phase === 'translating') message('表示中の文章から翻訳しています。タブの移動後も処理は続きます。');
+    else if (status.phase === 'translated') message(`翻訳済み ${status.completed} 件、失敗 ${status.failed} 件${status.limited ? '（最大件数を超えたため一部省略）' : ''}`);
+    else if (modelReady) message('翻訳ボタンでページ全体を日本語化できます。');
   }
 
   async function pageMessage(type) {
-    if (tabId === null) throw new Error("アクティブなタブがありません。");
-    const response = await chrome.tabs.sendMessage(tabId, { type });
-    if (!response?.ok) throw new Error(response?.error || "ページへの通信に失敗しました。");
-    return response.status;
+    if (tabId === null) throw new Error('翻訳できるページが開かれていません。');
+    const result = await chrome.tabs.sendMessage(tabId, { type });
+    if (!result?.ok) throw new Error(result?.error || 'ページに接続できません。');
+    return result.status;
   }
 
   async function act(type) {
-    if (!available || busy) return;
+    if (busy || !canEditPage || (type === 'PAGE_TRANSLATE' && !modelReady)) return;
     busy = true;
     translateButton.disabled = true;
     restoreButton.disabled = true;
     try { showStatus(await pageMessage(type)); }
-    catch (error) { setMessage(String(error.message || error)); }
+    catch (error) { message(String(error?.message || error)); }
     finally { busy = false; await poll(); }
   }
 
   async function poll() {
-    if (!available || busy) return;
-    try { showStatus(await pageMessage("PAGE_STATUS")); }
-    catch { setMessage("ページとの接続が切れました。ページを再読み込みしてお試しください。"); }
+    if (busy || !canEditPage) return;
+    try { showStatus(await pageMessage('PAGE_STATUS')); }
+    catch { message('ページと接続できません。再読み込みしてからお試しください。'); }
   }
 
-  async function initialize() {
-    translateButton.disabled = true;
-    restoreButton.disabled = true;
-    $("retry-server").addEventListener("click", checkServer);
-    translateButton.addEventListener("click", () => act("PAGE_TRANSLATE"));
-    restoreButton.addEventListener("click", () => act("PAGE_RESTORE"));
-    void checkServer();
+  async function init() {
+    prepareButton.addEventListener('click', prepare);
+    $('retry-server').addEventListener('click', checkEngine);
+    translateButton.addEventListener('click', () => act('PAGE_TRANSLATE'));
+    restoreButton.addEventListener('click', () => act('PAGE_RESTORE'));
+    void checkEngine();
+    setInterval(checkEngine, 1300);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id || !/^https?:\/\//i.test(tab.url || "")) {
-        $("phase").textContent = "対象外のページ";
-        setMessage("Chromeの設定画面・新しいタブなどは翻訳できません。通常のWebページを開いてください。");
+      if (!tab?.id || !/^https?:\/\//i.test(tab.url || '')) {
+        $('phase').textContent = '対象外のページ';
+        message('Chrome内部ページは翻訳できません。通常のWebページを開いてください。');
         return;
       }
       tabId = tab.id;
-      await chrome.scripting.executeScript({ target: { tabId }, files: ["core.js", "content.js"] });
-      available = true;
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['core.js', 'content.js'] });
+      canEditPage = true;
       await poll();
-      setInterval(poll, 650);
+      setInterval(poll, 750);
     } catch (error) {
-      setMessage(`このページには拡張機能を挿入できません: ${error.message || error}`);
+      message(`ページに拡張機能を挿入できません: ${String(error?.message || error)}`);
     }
   }
-  void initialize();
+  void init();
 })();

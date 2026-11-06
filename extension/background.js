@@ -1,111 +1,107 @@
-/* All network requests originate in the extension service worker, never in web pages. */
-importScripts("core.js");
+/* MV3 coordinator: no localhost, models, or inference in the service worker. */
+importScripts('core.js');
 
-const API_ROOT = "http://127.0.0.1:8000";
-const COMPLETIONS_URL = `${API_ROOT}/v1/chat/completions`;
-const CACHE_STORAGE_KEY = "plamoPageTranslateCacheV1";
-const CACHE_LIMIT = 500;
+const CACHE_KEY = 'plamoPageTranslateCacheV2';
+const CACHE_LIMIT = 600;
 const cache = new Map();
-const inFlight = new Map();
-let persistTimer = null;
+const pending = new Map();
+let ensurePromise;
+let persistTimer;
 
-const cacheReady = chrome.storage.local.get(CACHE_STORAGE_KEY).then((stored) => {
-  const entries = stored[CACHE_STORAGE_KEY];
-  if (!Array.isArray(entries)) return;
-  for (const pair of entries.slice(-CACHE_LIMIT)) {
-    if (Array.isArray(pair) && pair.length === 2 &&
-        typeof pair[0] === "string" && typeof pair[1] === "string") {
+const cacheReady = chrome.storage.local.get(CACHE_KEY).then((data) => {
+  for (const pair of (Array.isArray(data[CACHE_KEY]) ? data[CACHE_KEY] : []).slice(-CACHE_LIMIT)) {
+    if (Array.isArray(pair) && pair.length === 2 && pair.every((v) => typeof v === 'string')) {
       cache.set(pair[0], pair[1]);
     }
   }
 }).catch(() => {});
 
-function remember(key, value) {
-  if (key.length + value.length > 7000) return;
+function remember(key, result) {
+  if (key.length + result.length > 7500) return;
   cache.delete(key);
-  cache.set(key, value);
+  cache.set(key, result);
   while (cache.size > CACHE_LIMIT) cache.delete(cache.keys().next().value);
-  if (persistTimer !== null) clearTimeout(persistTimer);
+  clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    persistTimer = null;
-    chrome.storage.local.set({ [CACHE_STORAGE_KEY]: [...cache] }).catch(() => {});
-  }, 1200);
+    chrome.storage.local.set({ [CACHE_KEY]: [...cache] }).catch(() => {});
+  }, 1000);
 }
 
-async function checkServer() {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  try {
-    const response = await fetch(`${API_ROOT}/health`, {
-      method: "GET", signal: controller.signal, cache: "no-store"
-    });
-    return response.ok ? { ok: true } : {
-      ok: false, error: `サーバーが準備中です (HTTP ${response.status})。`
-    };
-  } catch {
-    return { ok: false, error: "127.0.0.1:8000 に接続できません。llama-serverを起動してください。" };
-  } finally {
-    clearTimeout(timeout);
+async function hasOffscreenDocument() {
+  const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+  return contexts.some((c) => c.documentUrl === chrome.runtime.getURL('offscreen.html'));
+}
+
+async function ensureEngine() {
+  if (await hasOffscreenDocument()) return;
+  if (!ensurePromise) {
+    ensurePromise = chrome.offscreen.createDocument({
+      url: 'offscreen.html',
+      reasons: ['WORKERS'],
+      justification: 'Run the bundled WebAssembly/WebGPU translation engine offscreen while pages remain responsive.'
+    }).catch(async (error) => {
+      if (!(await hasOffscreenDocument())) throw error;
+    }).finally(() => { ensurePromise = undefined; });
+  }
+  await ensurePromise;
+}
+
+async function engineMessage(action, payload = {}) {
+  const message = { target: 'PLAMO_ENGINE', action, ...payload };
+  // Freshly created offscreen pages need a moment to register their ESM listener.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    try {
+      return await chrome.runtime.sendMessage(message);
+    } catch (error) {
+      const detail = String(error?.message || error);
+      if (attempt === 11 || !/receiving end does not exist|message port closed/i.test(detail)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 120));
+    }
   }
 }
 
-async function requestTranslation(text) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
-  try {
-    const response = await fetch(COMPLETIONS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(PLaMoCore.makeRequest(text)),
-      signal: controller.signal
-    });
-    if (!response.ok) {
-      throw new Error(`翻訳サーバーがHTTP ${response.status}を返しました。`);
-    }
-    return PLaMoCore.readTranslation(await response.json());
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error("翻訳がタイムアウトしました（120秒）。");
-    }
-    if (error?.name === "TypeError" && /fetch/i.test(error.message)) {
-      throw new Error("翻訳サーバーに接続できません。llama-serverを確認してください。");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
+async function status() {
+  if (!(await hasOffscreenDocument())) {
+    return { ok: true, phase: 'idle', webgpu: null, loaded: 0, total: 0, message: 'モデルを準備してください。' };
   }
+  const response = await engineMessage('STATUS');
+  return response && typeof response === 'object'
+    ? response : { ok: false, phase: 'error', error: '推論エンジンから応答がありません。' };
+}
+
+async function prepare() {
+  await ensureEngine();
+  return engineMessage('START'); // responds immediately; 1.8 GB download continues offscreen
 }
 
 async function translate(text) {
-  if (typeof text !== "string" || !PLaMoCore.shouldTranslateText(text) || text.length > 1200) {
-    throw new Error("翻訳できないテキストです。");
+  if (typeof text !== 'string' || !PLaMoCore.shouldTranslateText(text) || text.length > 1200) {
+    throw new Error('翻訳対象の文字列が無効です（上限1200文字）。');
   }
   await cacheReady;
-  const key = `ja\u0000plain\u0000${text}`;
+  const key = `plamo3-2b-q4km:ja:plain\u0000${text}`;
   if (cache.has(key)) return cache.get(key);
-  if (inFlight.has(key)) return inFlight.get(key);
-
-  const promise = requestTranslation(text).then((result) => {
-    remember(key, result);
-    return result;
-  }).finally(() => inFlight.delete(key));
-  inFlight.set(key, promise);
+  if (pending.has(key)) return pending.get(key);
+  const promise = (async () => {
+    if (!(await hasOffscreenDocument())) throw new Error('先に「モデルを準備」を押してください。');
+    const result = await engineMessage('TRANSLATE', { text });
+    if (!result?.ok || typeof result.translation !== 'string') {
+      throw new Error(result?.error || 'モデルが翻訳できませんでした。');
+    }
+    remember(key, result.translation);
+    return result.translation;
+  })().finally(() => pending.delete(key));
+  pending.set(key, promise);
   return promise;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || !message || typeof message !== "object") {
-    return false;
-  }
-  if (message.type === "CHECK_SERVER") {
-    checkServer().then(sendResponse);
-    return true;
-  }
-  if (message.type === "TRANSLATE_TEXT") {
-    translate(message.text)
-      .then((translation) => sendResponse({ ok: true, translation }))
-      .catch((error) => sendResponse({ ok: false, error: String(error.message || error) }));
-    return true;
-  }
-  return false;
+chrome.runtime.onMessage.addListener((message, sender, reply) => {
+  if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object' || message.target) return false;
+  let job;
+  if (message.type === 'ENGINE_STATUS') job = status();
+  else if (message.type === 'ENGINE_PREPARE') job = prepare();
+  else if (message.type === 'TRANSLATE_TEXT') job = translate(message.text).then((translation) => ({ ok: true, translation }));
+  else return false;
+  Promise.resolve(job).then(reply).catch((error) => reply({ ok: false, error: String(error?.message || error) }));
+  return true;
 });

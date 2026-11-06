@@ -1,6 +1,5 @@
-models/
 node_modules/
-*.log
+dist/
+*.gguf
+.env*
 .DS_Store
-.vscode/
-*.zip

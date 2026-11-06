@@ -1,11 +1,14 @@
 {
   "name": "plamo-page-translate",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Local-first full-page Chrome translation extension using PLaMo 3 Translate 2B",
+  "description": "Chrome MV3 full-page offline translation with PLaMo 3 Translate 2B GGUF + WebGPU",
   "scripts": {
-    "test": "node --test tests/core.test.cjs tests/background.test.cjs tests/content.test.cjs",
-    "check": "node --check extension/core.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js"
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "check": "node scripts/check.mjs"
   },
+  "dependencies": { "@wllama/wllama": "3.8.1" },
+  "devDependencies": { "esbuild": "0.25.12" },
   "engines": { "node": ">=20" }
 }
