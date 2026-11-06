@@ -135,16 +135,6 @@ npm run check
 - [PLaMo 3 Translate 2Bモデルファイル](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF/tree/main)
 - [llama.cpp](https://github.com/ggml-org/llama.cpp)
 
-## GitHubで新しいリポジトリにする
+## GitHubリポジトリ
 
-GitHub CLIにログイン済みなら、プロジェクトのルートで以下を実行します（公開リポジトリの例です）。非公開なら`--public`を`--private`に変更してください。
-
-```powershell
-git init
-git add .
-git commit -m "Initial Chrome extension for PLaMo 3 Translate 2B"
-git branch -M main
-gh repo create plamo-page-translate --public --source=. --remote=origin --push
-```
-
-GitHub CLIを使わない場合は、GitHub上で空のリポジトリを作り、上記ソースをアップロードしてください。`.gitignore`により`models/`の重みはGitHubに入りません。
+[ソースコードと更新履歴](https://github.com/Kaito-Rowing/PLaMo-Page-Translate)

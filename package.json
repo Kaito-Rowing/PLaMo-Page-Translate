@@ -1,0 +1,11 @@
+{
+  "name": "plamo-page-translate",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first full-page Chrome translation extension using PLaMo 3 Translate 2B",
+  "scripts": {
+    "test": "node --test tests/core.test.cjs tests/background.test.cjs tests/content.test.cjs",
+    "check": "node --check extension/core.js && node --check extension/background.js && node --check extension/content.js && node --check extension/popup.js"
+  },
+  "engines": { "node": ">=20" }
+}
