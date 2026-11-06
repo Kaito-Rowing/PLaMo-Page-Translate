@@ -69,9 +69,9 @@ async function status() {
     ? response : { ok: false, phase: 'error', error: '推論エンジンから応答がありません。' };
 }
 
-async function prepare() {
+async function prepare(mode = 'gpu') {
   await ensureEngine();
-  return engineMessage('START'); // responds immediately; 1.8 GB download continues offscreen
+  return engineMessage('START', { mode }); // responds immediately; 1.8 GB download continues offscreen
 }
 
 async function translate(text) {
@@ -99,7 +99,8 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (sender.id !== chrome.runtime.id || !message || typeof message !== 'object' || message.target) return false;
   let job;
   if (message.type === 'ENGINE_STATUS') job = status();
-  else if (message.type === 'ENGINE_PREPARE') job = prepare();
+  else if (message.type === 'ENGINE_PREPARE') job = prepare(message.mode === 'cpu' ? 'cpu' : 'gpu');
+  else if (message.type === 'ENGINE_TEST') job = engineMessage('TEST');
   else if (message.type === 'TRANSLATE_TEXT') job = translate(message.text).then((translation) => ({ ok: true, translation }));
   else return false;
   Promise.resolve(job).then(reply).catch((error) => reply({ ok: false, error: String(error?.message || error) }));

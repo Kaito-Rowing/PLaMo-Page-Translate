@@ -7,7 +7,7 @@ let model;
 let loading;
 let chain = Promise.resolve();
 const state = {
-  phase: 'idle', loaded: 0, total: 0, webgpu: null,
+  phase: 'idle', mode: 'gpu', loaded: 0, total: 0, webgpu: null,
   message: 'モデルを準備してください。', error: null
 };
 
@@ -23,9 +23,11 @@ function prompt(text) {
     + '<|plamo:tag|>input<|plamo:msg|>' + text
     + '<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>ja<|plamo:msg|>';
 }
-async function start() {
-  if (model?.isModelLoaded()) return status();
+async function start(mode = 'gpu') {
+  if (!['gpu', 'cpu'].includes(mode)) throw new Error('invalid engine mode');
   if (loading) return status();
+  if (model?.isModelLoaded() && state.mode === mode && state.phase === 'ready') return status();
+  state.mode = mode;
   report('downloading', 'モデルの取得・キャッシュ確認中…（初回約1.8GB）');
   state.error = null;
   state.loaded = 0;
@@ -33,25 +35,31 @@ async function start() {
   loading = (async () => {
     let instance;
     try {
+      // Switching engines reuses the same GGUF cache, but needs a fresh WASM runtime.
+      if (model) {
+        const previous = model;
+        model = undefined;
+        await previous.exit();
+      }
       instance = new Wllama({ default: chrome.runtime.getURL('wllama/wllama.wasm') }, {
-        allowOffline: true, parallelDownloads: 2, suppressNativeLog: true
+        allowOffline: true, parallelDownloads: 2, suppressNativeLog: false
       });
       // Chrome + RTX 4070: request GPU offload. Do not silently use CPU unless GPU is unavailable.
       state.webgpu = instance.isSupportWebGPU();
-      if (!state.webgpu) throw new Error('WebGPUが使えません。Chromeのハードウェアアクセラレーションを有効にしてください。');
+      if (mode === 'gpu' && !state.webgpu) throw new Error('WebGPUが使えません。Chromeのハードウェアアクセラレーションを有効にしてください。');
       await instance.loadModelFromUrl(MODEL_URL, {
-        n_ctx: 4096, n_batch: 128, n_threads: 1, n_gpu_layers: 999,
+        n_ctx: 4096, n_batch: 128, n_threads: 1, n_gpu_layers: mode === 'cpu' ? 0 : 999,
         useCache: true,
         progressCallback: ({ loaded, total }) => {
           if (!Number.isFinite(loaded) || !Number.isFinite(total) || total <= 0) return;
           state.loaded = loaded;
           state.total = total;
-          if (loaded >= total) report('loading', '取得完了。GPUへモデルをロードしています…');
+          if (loaded >= total) report('loading', mode === 'cpu' ? 'モデルをCPUへロードしています…' : '取得完了。GPUへモデルをロードしています…');
           else report('downloading', `モデルをダウンロード中… ${Math.floor((loaded / total) * 100)}%`);
         }
       });
       model = instance;
-      report('ready', 'WebGPUモデル準備完了。翻訳できます。');
+      report('ready', mode === 'cpu' ? 'CPU診断モード準備完了（低速）。短文テストを実行してください。' : 'WebGPUモデル準備完了。まず短文テストを実行してください。');
     } catch (error) {
       state.error = String(error?.message || error);
       report('error', 'モデルの読み込みに失敗しました。');
@@ -82,7 +90,7 @@ async function doTranslate(text) {
     // A failed native inference may have left the WASM runtime in a bad state.
     // Stop promptly rather than attempting hundreds of doomed translations.
     state.error = '推論エンジンエラー: ' + String(error?.message || error);
-    report('error', 'WebGPU推論に失敗しました。「モデルを準備」で再初期化してください。');
+    report('error', state.mode === 'cpu' ? 'CPU推論に失敗しました。エラー全文を共有してください。' : 'WebGPU推論に失敗しました。CPU診断モードで切り分けできます。');
     const failed = model;
     model = undefined;
     try { await failed?.exit(); } catch { /* worker may already be dead */ }
@@ -101,7 +109,13 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message.action === 'STATUS') { reply(status()); return false; }
   if (message.action === 'START') {
     // Acknowledge now. start() owns the long-lived background promise.
-    start().then(reply).catch((e) => reply({ ok: false, error: String(e) }));
+    start(message.mode === 'cpu' ? 'cpu' : 'gpu').then(reply).catch((e) => reply({ ok: false, error: String(e) }));
+    return true;
+  }
+  if (message.action === 'TEST') {
+    const job = chain.then(() => doTranslate('Hello, world!'));
+    chain = job.catch(() => {});
+    job.then(reply).catch((e) => reply({ ok: false, error: String(e?.message || e) }));
     return true;
   }
   if (message.action === 'TRANSLATE') {

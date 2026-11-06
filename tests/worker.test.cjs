@@ -14,6 +14,8 @@ test('patched worker catches null native result and unread GLUE header before al
     const parsed = spawnSync(process.execPath, ['--check', join(destination, 'llama-worker.js')], { encoding: 'utf8' });
     assert.equal(parsed.status, 0, parsed.stderr);
     assert.match(code, /let lastNativeError = ''/);
+    assert.match(code, /if \(RUN_OPTIONS.noWebGPU\)/);
+    assert.match(code, /WorkerNavigator.prototype/);
     assert.match(code, /if \(outputPtr == null \|\| outputPtr === 0 \|\| outputPtr === 0n\)/);
     assert.match(code, /outputLen < 16 \|\| outputLen > 16 \* 1024 \* 1024/);
     const magic = Buffer.from('GLUE').readUInt32LE(0);

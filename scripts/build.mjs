@@ -71,7 +71,8 @@ export async function generateWorkers({ generatedPath = sourceFiles.generated, w
   const pthreadStatic = patchLlamaWorker(llama).replace('? argMainScriptBlob', '? RUN_OPTIONS.moduleUrl');
   // `Module` is deliberately renamed in wModuleInit to prevent shadowing the worker's Module.
   const moduleInWorker = moduleSource.replace('var Module', 'var ___Module');
-  const workerSource = `// Static MV3 worker generated from pinned wllama.\nconst RUN_OPTIONS = JSON.parse(new URLSearchParams(self.location.search).get('o') || '{}');\nfunction wModuleInit() { ${moduleInWorker}; return Module; }\n${pthreadStatic}\n`;
+  const noWebGPUStub = 'try{Object.defineProperty(WorkerNavigator.prototype,"gpu",{get:()=>({requestAdapter:async()=>null})});}catch(e){}';
+  const workerSource = `// Static MV3 worker generated from pinned wllama.\nconst RUN_OPTIONS = JSON.parse(new URLSearchParams(self.location.search).get('o') || '{}');\nfunction wModuleInit() { if (RUN_OPTIONS.noWebGPU) { ${noWebGPUStub} } ${moduleInWorker}; return Module; }\n${pthreadStatic}\n`;
   await mkdir(destination, { recursive: true });
   await Promise.all([
     writeFile(join(destination, 'llama-worker.js'), workerSource),
@@ -96,6 +97,7 @@ const staticWorkerFn = `export const createWorker = (workerCode: string | Blob):
     if (!found) throw new Error('Could not parse wllama worker options');
     const opts = JSON.parse(found[1]);
     opts.moduleUrl = chrome.runtime.getURL('wllama/module.js');
+    opts.noWebGPU = workerCode.includes('try{Object.defineProperty(WorkerNavigator.prototype,"gpu"');
     const url = chrome.runtime.getURL('wllama/llama-worker.js') + '?o=' + encodeURIComponent(JSON.stringify(opts));
     return new Worker(url, { type: 'module' });
   }

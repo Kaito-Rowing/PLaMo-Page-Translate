@@ -53,5 +53,5 @@ footer { border-top: 1px solid #e0e5ee; margin-top: 12px; padding-top: 12px; tex
 }
 /* WebGPU model preparation */
 .model-note { font-size: 11px; color: #52637f; line-height: 1.45; margin: 0 0 10px; }
-#prepare { margin-bottom: 10px; }
+#prepare, #prepare-cpu, #test { margin-bottom: 6px; }
 #model-message { margin-top: 8px; overflow-wrap: anywhere; }
