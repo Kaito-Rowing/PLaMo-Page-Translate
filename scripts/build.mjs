@@ -24,7 +24,7 @@ function mustContain(haystack, needle, name) {
 }
 
 /**
- * wllama 3.8.1 native wllama_action returns nullptr on C++ exceptions without
+ * Older wllama native wllama_action returns nullptr on C++ exceptions without
  * overwriting its GLUE input header with a response length. 0x45554c47 then
  * becomes a bogus 1.16GB allocation. Validate the native pointer and result
  * before allocating, and retain the native C++ error message for diagnosis.
@@ -113,6 +113,12 @@ export async function buildExtension() {
   await rm(dist, { recursive: true, force: true });
   await cp(join(root, 'extension'), dist, { recursive: true });
   await rm(join(dist, 'engine.js'));
+  await mkdir(join(dist, 'licenses'), { recursive: true });
+  await Promise.all([
+    copyFile(join(root, 'LICENSE'), join(dist, 'LICENSE')),
+    copyFile(join(wllamaRoot, 'LICENCE'), join(dist, 'licenses', 'wllama.txt')),
+    cp(join(root, 'licenses'), join(dist, 'licenses'), { recursive: true })
+  ]);
   await generateWorkers();
   await build({
     entryPoints: [join(root, 'extension', 'engine.js')],

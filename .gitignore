@@ -3,3 +3,5 @@ dist/
 *.gguf
 .env*
 .DS_Store
+.e2e-profile/
+test-results/
