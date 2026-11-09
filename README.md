@@ -1,119 +1,105 @@
-# PLaMo Page Translate — Chrome拡張・ブラウザ内WebGPU版
+# PLaMo Page Translate
 
-**PLaMo 3 Translate 2B (GGUF Q4_K_M) をChrome拡張の中で動かし、英語などのWebページを日本語に翻訳する実験的なMVPです。** `llama-server`、CUDAの個別セットアップ、Pythonは必要ありません。
+Webページを、PC内の **PLaMo 3 Translate 2B / GGUF Q4_K_M** で日本語にするChrome拡張です。WebGPUで推論し、GPUが使えない場合はCPUモードも選べます。Python、CUDA、ローカルサーバーの準備は不要です。
 
-> **開発ステータス: v0.2.2 / プレビュー** — JavaScriptの自動テストは実施済みですが、RTX 4070でモデルを実際にロードして翻訳するE2E検証は未実施です。PLaMo 3とwllamaのWebGPU互換性は環境によって失敗する可能性があります。動かない場合はChrome拡張のエラー画面を共有してください。
+**v0.3.0** では、旧版で最初の推論時に発生した `std::bad_function_call` を実機で再現し、wllamaを3.8.1から3.13.0へ更新して解消しました。モデルの読み込み後に実際の日本語翻訳を試し、成功してから「準備完了」を表示します。
 
-## v0.2.1: WebGPU推論エラーの診断・回復
+## インストール
 
-v0.2.0で「Invalid typed array length: 1163217991」が起きる場合、数値は
-wllamaのGLUEバイナリヘッダー（0x45554c47）です。ネイティブ推論例外時に
-C++がnullを返し、Workerが未更新のヘッダーを出力長と誤解する経路がありました。
+1. [Releases](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest) から **`plamo-page-translate-webgpu.zip`** をダウンロードして解凍します。
+2. Chromeの `chrome://extensions/` を開き、右上の **デベロッパーモード** をONにします。
+3. **「パッケージ化されていない拡張機能を読み込む」** で、`manifest.json` がある解凍フォルダーを選びます。
+4. 普通のWebページを開き、拡張アイコンから **「GPUモデルを準備」** を押します。初回は約1.81GBを取得します。
+5. 日本語への試訳が成功して **「モデル準備完了」** と表示されたら、**「ページ全体を翻訳」** を押します。
+6. **「原文に戻す」** で翻訳を取り消せます。処理中の取り消しにも対応しています。
 
-v0.2.1では、nullポインタと出力長を検証して巨大な配列確保を防ぎ、
-ネイティブ例外の診断情報をポップアップに表示します。モデルの推論が失敗した場合は
-再初期化を案内します。**これは異常系の修正と診断強化であり、モデル・WebGPU固有の
-根本的な推論失敗まで修正できたことを保証するものではありません。**
+**更新時:** 同じ解凍フォルダーへ新しいZIPの内容を上書きし、拡張一覧の再読み込みを押してください。別フォルダーに登録すると拡張IDが変わり、モデルの再取得が必要になる場合があります。旧版を重複して有効にしないでください。
 
-拡張を更新するには Actions の最新ビルドZIPを解凍して
-`chrome://extensions/` から新しいフォルダーを読み込みます。
-旧版は削除または無効化して重複起動を避けてください。
-モデルデータは拡張IDが変わると再取得が必要になる場合があります。
-v0.2.1でもエラーになる場合は**エラー全文**を送ってください。
+GitHubの **Code → Download ZIP はソースコード**です。そのままでは推論用WASMが入っていないため動作しません。ReleaseのZIP、[Actions](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/actions) の成果物、または下記のビルドを使ってください。
 
-## v0.2.2: CPU診断・短文テスト
+## 必要な環境
 
-WebGPU版で `wllama native get_result failed: std::bad_function_call` が出る場合、
-モデルのロードは終わっていますが、最初の推論でC++側が失敗しています。
-現時点ではGPUバックエンド／モデル互換性など根本原因を確定できていません。
+- **Chrome 137以降（最新版推奨）**。WASM Memory64と[JSPI](https://v8.dev/blog/jspi)を使用します。旧版READMEのChrome 124という記載は誤りでした。
+- GPUモードではWebGPUとハードウェアアクセラレーションが必要です。
+- モデル保存用に約2GB以上の空きディスク容量と、推論用の追加RAM／VRAMが必要です。
+- 実機検証はWindows、RTX 4070 12GB、Chrome for Testing 158で実施しています。他のGPU・OSでの速度や動作は未検証です。
 
-1. ZIPから拡張を更新し、モデルの準備後に **「短い文章で動作確認」** を押します。
-2. GPUで失敗する場合は **「CPU診断モードで準備」** を押します。
-3. 「モデル準備完了（CPU）」を確認し、再度 **短い文章で動作確認** を実行します。
-4. **CPUでも失敗したか、CPUでは成功したか**と、エラーメッセージを共有してください。
+## できること
 
-CPU診断モードはWebGPUを無効化してWASMのCPUだけで翻訳を行うもので、
-GPUより低速です。モデルはOPFSキャッシュを再利用する設計です。
-この修正は診断機能の追加であり、PLaMo 3 Translate 2BのWebGPU推論の不具合を
-解消したことを保証するものではありません。
+- 見出し、本文、リンク、ボタンと、placeholder/title/aria-label/alt等の属性を翻訳します。HTML自体を生成し直さないので、ページのイベント処理を維持します。
+- 表示領域を優先し、追加された文章やサイトによる文章の書き換えも検出します。
+- 原文復元、翻訳結果のローカルキャッシュ、進捗表示に対応します。
+- 長文は分割します。生成上限で訳文が切れた場合は、さらに短く分けて再試行します。途中の訳文はページに反映しません。
+- モデルをOPFSに保存します。一度取得すれば、ネットワークなしでモデルを再読み込みして翻訳できます。
 
-## 主な機能
+## 対象外・制限
 
-- 拡張ポップアップの **「モデルを準備」** を押すと、Hugging FaceからPLaMo 3 Translate **2B Q4_K_M（約1.81GB）** を取得。モデルはブラウザのOPFSにキャッシュされ、次回から再利用します。
-- **「ページ全体を翻訳」** でテキストノードと一部の表示属性（見出し、ナビ、ボタン、placeholder/title/aria-label/alt等）を日本語に置換。HTMLタグは再生成しません。
-- **「原文に戻す」**、可視領域の優先処理、進捗表示、翻訳結果のキャッシュ、DOMの動的更新の検出に対応します。
-- モデルは**ローカルのWebGPU上で推論**。翻訳本文をクラウド翻訳APIへ送信しません。ただし**初回モデルダウンロードでHugging Faceへの通信が必要**です。
-- 翻訳対象はユーザーがボタンを押した通常のHTTP/HTTPSページ。`chrome://`等のChrome内部ページ、ストア、iframe内のテキスト、Shadow DOM内の文字などは対象外です。
+- `chrome://`等の内部ページ、Chromeウェブストア、PDFビューアー、iframe、Shadow DOM内の文章は対象外です。
+- コードブロック、編集中の文章、入力済みフォーム値、非表示要素、`translate="no"`、`.notranslate`は変更しません。
+- 1回のセッションで最大1200件です。非表示から表示に変わった文章は、翻訳ボタンをもう一度押して再走査できます。
+- DOMのテキストノードごとに翻訳するため、文の途中にリンクや強調タグがある場合は訳のつながりが不自然になることがあります。訳の正確性を保証するものではありません。
+- タブを閉じる・ページを再読み込みすると、そのページの翻訳と復元情報は消えます。拡張やブラウザの再起動後はモデルを再準備してください。ダウンロード済みモデルは再利用します。
 
-## 使い方（ビルド済みZIPを入手する場合）
+## 困ったとき
 
-1. GitHubの **Actions → Build and test browser-only extension** から最新の成功した実行を選び、Artifacts の `plamo-page-translate-webgpu` ZIPをダウンロードします（GitHubのサインインが必要な場合があります）。
-2. ZIPを解凍します。**ビルド済みZIP**の直下に`manifest.json`と`wllama/`があることを確認してください。
-3. Chromeの `chrome://extensions/` を開き、デベロッパーモードをONにします。
-4. **「パッケージ化されていない拡張機能を読み込む」** をクリックし、解凍フォルダーを選択します。
-5. 一般的な英語のWebページを開き、拡張アイコンから**「モデルを準備」** をクリック。モデルのダウンロードとGPUへのロードが完了するまで進捗を確認します。
-6. **「ページ全体を翻訳」** をクリック。翻訳結果はページ内に反映されます。
+- **WebGPUが使えない:** Chromeを更新し、設定のハードウェアアクセラレーションを確認してください。**「CPU診断モードで準備」**でも翻訳できますが、GPUより遅くなります。
+- **モデル準備／翻訳に失敗する:** エラー全文を確認し、モデルの準備をやり直します。モデルのキャッシュは削除しません。
+- **更新後も `std::bad_function_call` が出る:** v0.3.0のZIPを使い、拡張一覧で再読み込みしたこと、旧版が無効になっていることを確認してください。
+- **ページに接続できない:** 通常のHTTP/HTTPSページを開き、ページと拡張を再読み込みしてください。
 
-**重要:** GitHubの **Code → Download ZIP** はソースコードです。そのまま`extension/`をChromeに登録しても、必要なWebGPUエンジンとWASMが含まれないため**動作しません**。Actionsのビルド成果物を使うか、以下のローカルビルドを実施してください。
+## ソースからビルド
 
-## ソースからビルド（Windows）
-
-Node.js 20以上が必要です。PowerShellでリポジトリを取得してから次を実行してください。
+Node.js 22以上を推奨します（ビルド自体は20以上）。
 
 ```powershell
-npm install
+npm ci
 npm run check
 npm test
 npm run build
 ```
 
-生成された**`dist/`フォルダー**を`chrome://extensions/`から読み込みます（**`extension/`ではありません**）。変更を反映する場合は再ビルド・拡張の再読み込みを行ってください。
+生成した **`dist/`** をChromeへ登録します。`extension/` はソース用です。
 
-## 想定環境
+依存バージョンは `package-lock.json` で固定しています。GitHub Actionsでも同じ手順で検証・ビルドします。
 
-- Windows + Chrome 124以降、WebGPUとハードウェアアクセラレーションを有効化
-- NVIDIA RTX 4070 12GB + RAM 64GBは2Bモデルのサイズ上は十分ですが、VRAM使用量や実速度を保証するものではありません
-- ブラウザにはモデル保存先として約2GB以上の空きディスク容量が必要です（推論時の追加VRAM/RAMも必要）
+## 実モデルを使ったブラウザテスト
 
-## アーキテクチャ
+```powershell
+npx playwright install chromium
+npm run build
+npm run test:e2e
+```
+
+初回は実際のPLaMoモデルを約1.81GB取得します。GPU、通信、空きディスクが必要です。普段のブラウザとは別の `.e2e-profile/` にキャッシュし、結果とスクリーンショットを `test-results/` に保存します。`npm test` や通常のCIはモデルをダウンロードしません。
+
+公開サイトも含める場合:
+
+```powershell
+$env:E2E_LIVE = '1'
+npm run test:e2e
+```
+
+CPUモードを検証する場合は `$env:E2E_MODE = 'cpu'` を設定します。テストは翻訳結果のキャッシュを消してから開始するため、ページの翻訳もそのモードで推論します。モデルのOPFSキャッシュは保持します。
+
+テストは実際の拡張アイコン操作で `activeTab` 権限を取得し、拡張のポップアップ、Service Worker、オフスクリーンドキュメント、固定Worker、WASMを通して翻訳します。記事・長文・フォーム・多言語・動的更新・処理取り消しに加え、`E2E_LIVE=1` ではExample.com、CERN、IANA、MDNを確認します。最後にネットワークを切り、モデルの再ロードと試訳を確認します。
+
+[検証結果](docs/verification.md)に環境・件数・確認範囲を記載しています。
+
+## 構成
 
 ```text
-Chrome拡張popup
- ├─ モデル準備・進捗の表示
- └─ ページ翻訳・原文復元
-     ├─ content.js (TreeWalkerでDOMテキスト抽出・置換/復元)
-     ├─ background.js (Service Worker / メッセージ・翻訳キャッシュ)
-     └─ offscreen.html + engine.bundle.js (WebGPU推論・OPFSモデルキャッシュ)
-          └─ wllama 3.8.1 (同梱の静的Worker + WebAssembly)
-               └─ PLaMo 3 Translate 2B Q4_K_M (初回のみHFから取得)
+popup.html / popup.js
+  └ background.js  メッセージ転送・翻訳キャッシュ
+      ├ content.js + core.js  テキスト抽出・DOM反映・復元
+      └ offscreen.html + engine.bundle.js
+          └ wllama 3.13.0 / 固定Worker / WebAssembly
+              └ PLaMo 3 Translate 2B Q4_K_M / OPFS
 ```
 
-Chrome Manifest V3のCSPでは動的な`blob:` Workerを生成できないため、ビルド時にwllama v3.8.1の`createWorker`を差し替え、`dist/wllama/`に固定Worker／WASMを生成します。`node scripts/build.mjs`を使わずに`extension/`直下を読み込むことはできません。wllamaが更新された場合はビルドスクリプトの互換性確認が必要です。
+Manifest V3のCSPで禁止される `blob:` Workerを避けるため、ビルド時にwllamaのWorker生成処理を固定ファイルへ差し替えます。ネイティブエラー時の不正なGLUE応答も検証します。依存更新で構造が変わった場合、ビルドを停止する設計です。外部CDNから実行コードを取る互換モードは無効にしています。
 
-翻訳にはPLaMoのPFML3形式のraw completionを使用します。GPU初期化に失敗した場合は黙ってCPUに切り替えず、エラーを表示します。翻訳失敗時はページ上の原文を残します。
+## データとライセンス
 
-## 制限・注意
+翻訳本文は外部APIへ送信しません。初回のモデル取得時にはHugging Faceへ通信します。翻訳結果は `chrome.storage.local`、モデルはOPFSに保存します。ページへのアクセスは、ユーザーが拡張を開いたタブに対する `activeTab` を使います。
 
-- **WebGPU上での実機動作は未検証です**。モデルがwllama同梱のllama.cppではサポートされない場合、WASM/llama.cppの更新が必要です。
-- WebGPUとモデルのロードはオフスクリーンドキュメントで実行。Chromeが拡張を再起動すると再ロードが必要になる場合があります。モデルのキャッシュは保持されますが、ブラウザストレージ削除で失われます。
-- モデルファイルの再配布はせず、公式のHugging Faceリポジトリからユーザー自身のブラウザで取得します。モデルの利用規約は[公式モデルカード](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF)を参照してください。
-- 機密Webページに翻訳内容を残す処理ではなくても、Chrome拡張にはページへのアクセス権が必要です。外部APIには送信しませんがローカル翻訳結果は`chrome.storage.local`にキャッシュされます。
-- 翻訳文字数はノードあたり分割処理・最大1200件に制限しています。ページが非常に大きい場合は全要素を処理できない場合があります。
-
-## テスト
-
-```bash
-npm run check
-npm test
-npm run build
-```
-
-`npm test`はDOM操作とChromeメッセージルーティングをモックで検証します。GitHub Actionsは`dist/`をビルドし、ZIP成果物を生成します。実際のPLaMo GGUFを使った翻訳性能・Chrome実機のE2Eテストとは区別してください。
-
-## 使用ソフトウェア
-
-- [PLaMo 3 Translate 2B GGUF（Preferred Networks）](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF)
-- [wllama（@wllama/wllama）](https://github.com/ngxson/wllama) — MIT License
-- [esbuild](https://github.com/evanw/esbuild) — MIT License
-
-リポジトリ内のアプリ本体は`LICENSE`を参照してください。依存ライブラリ／モデルの各ライセンスは別途適用されます。
+アプリ本体は[MIT License](LICENSE)、[wllama](https://github.com/ngxson/wllama)もMIT Licenseです。ビルド成果物にライセンスを同梱します。モデルの重みはZIPに含みません。[公式モデルカード](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF)とPLaMo Community Licenseに従って利用してください。

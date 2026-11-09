@@ -79,7 +79,7 @@ async function translate(text) {
     throw new Error('翻訳対象の文字列が無効です（上限1200文字）。');
   }
   await cacheReady;
-  const key = `plamo3-2b-q4km:ja:plain\u0000${text}`;
+  const key = `plamo3-2b-q4km:wllama313:ja:plain\u0000${text}`;
   if (cache.has(key)) return cache.get(key);
   if (pending.has(key)) return pending.get(key);
   const promise = (async () => {

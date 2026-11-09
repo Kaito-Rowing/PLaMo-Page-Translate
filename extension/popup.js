@@ -22,13 +22,13 @@
       const ready = phase === 'ready';
       modelReady = ready;
       $('server-dot').className = `dot ${ready ? 'online' : phase === 'error' ? 'offline' : 'checking'}`;
-      const names = { idle: 'モデル未準備', downloading: 'モデル取得中', loading: 'GPUへ読み込み中', ready: 'モデル準備完了', error: 'モデルの読み込みに失敗' };
+      const names = { idle: 'モデル未準備', downloading: 'モデル取得中', loading: 'モデル読み込み中', verifying: '翻訳動作を確認中', ready: 'モデル準備完了', error: 'モデルの読み込みに失敗' };
       const mode = state?.mode === 'cpu' ? 'CPU' : 'GPU';
       $('server-status').textContent = ready ? `モデル準備完了（${mode}）` : names[phase] || '状態確認中';
       $('model-message').textContent = state?.error || (ready && lastTestMessage) || state?.message || 'モデルの状態を取得できません。';
       const percent = state?.total > 0 ? Math.min(100, (state.loaded / state.total) * 100) : ready ? 100 : 0;
       $('download-bar').style.width = `${percent}%`;
-      const preparing = phase === 'loading' || phase === 'downloading';
+      const preparing = phase === 'loading' || phase === 'downloading' || phase === 'verifying';
       prepareButton.disabled = preparing || testInProgress || (ready && mode === 'GPU');
       cpuButton.disabled = preparing || testInProgress || (ready && mode === 'CPU');
       cpuButton.textContent = ready && mode === 'CPU' ? 'CPU診断モード動作中' : 'CPU診断モードで準備（低速）';
@@ -60,11 +60,11 @@
     if (testInProgress || !modelReady) return;
     testInProgress = true;
     testButton.disabled = true;
-    lastTestMessage = '短い文章「Hello, world!」を翻訳中…';
+    lastTestMessage = '短い文章「The weather is nice today.」を翻訳中…';
     try {
       const result = await chrome.runtime.sendMessage({ type: 'ENGINE_TEST' });
       if (!result?.ok || !result.translation) throw new Error(result?.error || 'モデルから応答がありません。');
-      lastTestMessage = 'テスト成功: Hello, world! → ' + result.translation;
+      lastTestMessage = 'テスト成功: The weather is nice today. → ' + result.translation;
     } catch (error) {
       lastTestMessage = 'テスト失敗: ' + String(error?.message || error);
     } finally {
