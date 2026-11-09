@@ -13,7 +13,7 @@
 [![Chrome](https://img.shields.io/badge/Chrome-137%2B-4285F4?logo=googlechrome&logoColor=white)](#動作環境)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**ダウンロード**](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest) · [インストール](#インストール) · [使い方](#使い方) · [FAQ](#faq)
+[**ダウンロード**](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest) · [インストール](#インストール) · [使い方](#使い方) · [セキュリティ](#セキュリティとプライバシー) · [FAQ](#faq)
 
 </div>
 
@@ -37,6 +37,22 @@ Page Translateは、**PLaMo 3 Translate 2Bをブラウザ内で動かす**Chrome
   <br>
   <sub>翻訳完了時のポップアップ</sub>
 </p>
+
+## セキュリティとプライバシー
+
+**翻訳本文を外部の翻訳APIへ送信しない設計**です。ページへのアクセスや訳文の反映、拡張の更新にも、次の対策を実装しています。
+
+| 対策 | 実装 |
+| --- | --- |
+| **PC内で翻訳** | 原文と文脈はChrome内のモデルで処理します。翻訳用サーバーへの送信やAPIキーは不要です。 |
+| **操作したタブにアクセス** | ページへのスクリプト挿入には `activeTab` と `scripting` を使用。全サイトへの常時アクセスを要求せず、ユーザーが拡張を開いたタブで動作します。 |
+| **モデルの出力をコードとして実行しない** | 訳文はテキストとして反映。書式マーカーを検証し、元のDOM要素を使ってリンクや強調を復元します。 |
+| **推論用コードを同梱** | JavaScript・Worker・WASMは拡張に同梱し、CSPでスクリプトの読み込み先を拡張内に限定しています。 |
+| **更新ファイルを照合** | 更新ツールはZIPを公開SHA-256と照合し、必要なファイルと展開先を検証してから配置します。 |
+
+モデルの取得・キャッシュ確認時にはHugging Faceへ、拡張の更新時にはGitHubへ通信します。翻訳の高速化のため、**原文・文脈・訳文は端末内にキャッシュ**されます。
+
+権限、通信先、保存内容、更新検証の範囲は[セキュリティ・データの取り扱い](docs/security.md)に記載しています。[実装](extension/)も公開しています。
 
 ## インストール
 
@@ -89,7 +105,7 @@ Windows / RTX 4070 12GBで実機検証しています。ソースからのビル
 <details>
 <summary><strong>翻訳する文章は外部に送信されますか？</strong></summary>
 
-本文は外部の翻訳APIへ送信しません。モデルはブラウザ内で動作し、モデルと翻訳結果もブラウザ内に保存します。初回のモデル取得ではHugging Faceへ、拡張の更新ではGitHubへ通信します。
+本文は外部の翻訳APIへ送信しません。モデルはブラウザ内で動作します。原文・文脈・訳文のローカルキャッシュと、モデル取得・更新時の通信については[データの取り扱い](docs/security.md)を参照してください。
 
 </details>
 
