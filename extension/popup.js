@@ -5,13 +5,10 @@
   const restoreButton = $('restore');
   const prepareButton = $('prepare');
   const cpuButton = $('prepare-cpu');
-  const testButton = $('test');
   let tabId = null;
   let canEditPage = false;
   let busy = false;
   let modelReady = false;
-  let lastTestMessage = null;
-  let testInProgress = false;
 
   function message(text) { $('message').textContent = text; }
 
@@ -25,14 +22,13 @@
       const names = { idle: 'モデル未準備', downloading: 'モデル取得中', loading: 'モデル読み込み中', verifying: '翻訳動作を確認中', ready: 'モデル準備完了', error: 'モデルの読み込みに失敗' };
       const mode = state?.mode === 'cpu' ? 'CPU' : 'GPU';
       $('server-status').textContent = ready ? `モデル準備完了（${mode}）` : names[phase] || '状態確認中';
-      $('model-message').textContent = state?.error || (ready && lastTestMessage) || state?.message || 'モデルの状態を取得できません。';
+      $('model-message').textContent = state?.error || state?.message || 'モデルの状態を取得できません。';
       const percent = state?.total > 0 ? Math.min(100, (state.loaded / state.total) * 100) : ready ? 100 : 0;
       $('download-bar').style.width = `${percent}%`;
       const preparing = phase === 'loading' || phase === 'downloading' || phase === 'verifying';
-      prepareButton.disabled = preparing || testInProgress || (ready && mode === 'GPU');
-      cpuButton.disabled = preparing || testInProgress || (ready && mode === 'CPU');
-      cpuButton.textContent = ready && mode === 'CPU' ? 'CPU診断モード動作中' : 'CPU診断モードで準備（低速）';
-      testButton.disabled = !ready || testInProgress;
+      prepareButton.disabled = preparing || (ready && mode === 'GPU');
+      cpuButton.disabled = preparing || (ready && mode === 'CPU');
+      cpuButton.textContent = ready && mode === 'CPU' ? 'CPUモデル準備完了' : 'CPUモデルを準備（低速）';
       prepareButton.textContent = ready && mode === 'GPU' ? 'GPUモデル準備完了' : preparing ? 'モデル準備中…' : 'GPUモデルを準備';
       translateButton.disabled = !ready || !canEditPage || busy;
     } catch (error) {
@@ -47,30 +43,12 @@
   async function prepare(mode = 'gpu') {
     prepareButton.disabled = true;
     cpuButton.disabled = true;
-    lastTestMessage = null;
     try {
       const result = await chrome.runtime.sendMessage({ type: 'ENGINE_PREPARE', mode });
       if (!result?.ok) throw new Error(result?.error || 'モデルを準備できません。');
     } catch (error) {
       $('model-message').textContent = String(error?.message || error);
     } finally { await checkEngine(); }
-  }
-
-  async function testEngine() {
-    if (testInProgress || !modelReady) return;
-    testInProgress = true;
-    testButton.disabled = true;
-    lastTestMessage = '短い文章「The weather is nice today.」を翻訳中…';
-    try {
-      const result = await chrome.runtime.sendMessage({ type: 'ENGINE_TEST' });
-      if (!result?.ok || !result.translation) throw new Error(result?.error || 'モデルから応答がありません。');
-      lastTestMessage = 'テスト成功: The weather is nice today. → ' + result.translation;
-    } catch (error) {
-      lastTestMessage = 'テスト失敗: ' + String(error?.message || error);
-    } finally {
-      testInProgress = false;
-      await checkEngine();
-    }
   }
 
   function showStatus(status) {
@@ -114,7 +92,6 @@
   async function init() {
     prepareButton.addEventListener('click', () => prepare('gpu'));
     cpuButton.addEventListener('click', () => prepare('cpu'));
-    testButton.addEventListener('click', testEngine);
     $('retry-server').addEventListener('click', checkEngine);
     translateButton.addEventListener('click', () => act('PAGE_TRANSLATE'));
     restoreButton.addEventListener('click', () => act('PAGE_RESTORE'));

@@ -21,7 +21,6 @@ function makeBackground({ engineReady = true } = {}) {
         if (message.action === 'STATUS') return { ok: true, phase: engineReady ? 'ready' : 'idle' };
         if (message.action === 'START') return { ok: true, phase: 'downloading' };
         if (message.action === 'TRANSLATE') return { ok: true, translation: '翻訳済み:' + message.text };
-        if (message.action === 'TEST') return { ok: true, translation: 'こんにちは、世界！' };
         throw new Error('unexpected message');
       },
       onMessage: { addListener(fn) { listener = fn; } }
@@ -64,13 +63,10 @@ test('prepares the offscreen model host just once and checks status', async () =
   assert.equal((await app.message({ type: 'ENGINE_STATUS' })).phase, 'ready');
 });
 
-test('passes CPU mode and short inference test to the offscreen engine', async () => {
+test('passes CPU mode to the offscreen engine', async () => {
   const app = makeBackground();
   await app.message({ type: 'ENGINE_PREPARE', mode: 'cpu' });
   assert.equal(app.engineCalls.find((x) => x.action === 'START').mode, 'cpu');
-  const result = await app.message({ type: 'ENGINE_TEST' });
-  assert.equal(result.translation, 'こんにちは、世界！');
-  assert.equal(app.engineCalls.filter((x) => x.action === 'TEST').length, 1);
 });
 
 test('translates using offscreen WebGPU only, deduplicates concurrent messages and caches translation', async () => {

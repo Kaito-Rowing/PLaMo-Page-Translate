@@ -119,6 +119,7 @@ export async function buildExtension() {
     copyFile(join(wllamaRoot, 'LICENCE'), join(dist, 'licenses', 'wllama.txt')),
     cp(join(root, 'licenses'), join(dist, 'licenses'), { recursive: true })
   ]);
+  await cp(join(root, 'install'), dist, { recursive: true });
   await generateWorkers();
   await build({
     entryPoints: [join(root, 'extension', 'engine.js')],
@@ -126,7 +127,7 @@ export async function buildExtension() {
     bundle: true,
     format: 'esm',
     platform: 'browser',
-    target: ['chrome124'],
+    target: ['chrome137'],
     logLevel: 'info',
     minify: true,
     plugins: [{

@@ -70,12 +70,12 @@ async function start(mode = 'gpu') {
           else report('downloading', `モデルをダウンロード中… ${Math.floor((loaded / total) * 100)}%`);
         }
       });
-      report('verifying', 'モデルの読み込み完了。日本語への翻訳を確認しています…');
+      report('verifying', '翻訳エンジンを準備しています…');
       const result = await complete(instance, SMOKE_TEXT);
       if (!/[ぁ-ゟ゠-ヿ一-龯]/u.test(result.translation)) throw new Error('動作確認で日本語の訳文が得られませんでした。');
       state.smokeTranslation = result.translation;
       model = instance;
-      report('ready', `${mode === 'cpu' ? 'CPUモデル準備完了（低速）' : 'WebGPUモデル準備完了'}。翻訳テスト成功: ${result.translation}`);
+      report('ready', `${mode === 'cpu' ? 'CPUモデル準備完了（低速）' : 'WebGPUモデル準備完了'}。ページを翻訳できます。`);
     } catch (error) {
       state.error = String(error?.message || error);
       report('error', 'モデルの読み込みに失敗しました。');
@@ -134,7 +134,7 @@ async function doTranslate(text, context = '') {
     // A failed native inference may have left the WASM runtime in a bad state.
     // Stop promptly rather than attempting hundreds of doomed translations.
     state.error = '推論エンジンエラー: ' + String(error?.message || error);
-    report('error', state.mode === 'cpu' ? 'CPU推論に失敗しました。エラー全文を共有してください。' : 'WebGPU推論に失敗しました。CPU診断モードで切り分けできます。');
+    report('error', state.mode === 'cpu' ? 'CPU推論に失敗しました。モデルを再準備してください。' : 'WebGPU推論に失敗しました。CPUモードへの切り替えをお試しください。');
     const failed = model;
     model = undefined;
     try { await failed?.exit(); } catch { /* worker may already be dead */ }
@@ -148,12 +148,6 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message.action === 'START') {
     // Acknowledge now. start() owns the long-lived background promise.
     start(message.mode === 'cpu' ? 'cpu' : 'gpu').then(reply).catch((e) => reply({ ok: false, error: String(e) }));
-    return true;
-  }
-  if (message.action === 'TEST') {
-    const job = chain.then(() => doTranslate(SMOKE_TEXT));
-    chain = job.catch(() => {});
-    job.then(reply).catch((e) => reply({ ok: false, error: String(e?.message || e) }));
     return true;
   }
   if (message.action === 'TRANSLATE') {
