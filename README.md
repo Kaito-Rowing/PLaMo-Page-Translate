@@ -2,11 +2,11 @@
 
 <img src="extension/icons/icon-128.png" width="72" height="72" alt="">
 
-# PLaMo Page Translate
+# Page Translate
 
-**PC内のAIで、Webページを日本語に。**
+**ブラウザ内で動作するローカル翻訳拡張**
 
-Chrome向けローカル翻訳拡張 · Powered by PLaMo 3 Translate
+個人開発 · Chrome向け · WebGPU / CPU対応
 
 [![Release](https://img.shields.io/github/v/release/Kaito-Rowing/PLaMo-Page-Translate?label=release)](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)
 [![CI](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/actions/workflows/test.yml/badge.svg)](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/actions/workflows/test.yml)
@@ -19,7 +19,7 @@ Chrome向けローカル翻訳拡張 · Powered by PLaMo 3 Translate
 
 ---
 
-PLaMo Page Translateは、**PLaMo 3 Translate 2Bをブラウザ内で動かす**Chrome拡張です。開いているページを日本語に翻訳し、ボタンひとつで原文に戻せます。翻訳用サーバーやAPIキーの準備は不要です。
+Page Translateは、**PLaMo 3 Translate 2Bをブラウザ内で動かす**Chrome拡張です。開いているページを日本語に翻訳し、ボタンひとつで原文に戻せます。翻訳用サーバーやAPIキーの準備は不要です。
 
 ## 特徴
 
@@ -30,9 +30,12 @@ PLaMo Page Translateは、**PLaMo 3 Translate 2Bをブラウザ内で動かす**
 - **モデルを保存して再利用** — 初回取得後は、保存済みモデルでオフラインでも推論できます。
 
 <p align="center">
-  <img src="docs/images/popup.png" width="320" alt="PLaMo Page Translateの操作画面。GPUモデル準備完了、翻訳・原文復元ボタン、進捗を表示。">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/popup-dark.png">
+    <img src="docs/images/popup.png" width="360" alt="Page Translateの操作画面。翻訳・原文復元ボタン、進捗、折りたたまれたモデル設定を表示。">
+  </picture>
   <br>
-  <sub>実際の操作画面 — モデルを準備して、ページを翻訳。</sub>
+  <sub>翻訳完了時のポップアップ</sub>
 </p>
 
 ## インストール
@@ -55,7 +58,7 @@ Windowsでは同梱の更新ツールで配置できます。**管理者権限�
 2. **「GPUモデルを準備」**を押し、準備完了を待ちます。初回のみ約**1.81GB**のモデルを取得します。
 3. **「ページ全体を翻訳」**を押します。元に戻すときは**「原文に戻す」**を押します。
 
-GPUを利用できない場合は **「CPUモデルを準備（低速）」**を選んでください。ブラウザを再起動した後はモデルの準備が必要ですが、取得済みのモデルを再利用します。
+GPUを利用できない場合は **「モデル設定」**を開き、**「CPUモデルを準備」**を選んでください（GPUより低速です）。ブラウザを再起動した後はモデルの準備が必要ですが、取得済みのモデルを再利用します。
 
 ## 動作環境
 

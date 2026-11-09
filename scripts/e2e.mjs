@@ -183,6 +183,14 @@ try {
         await translated(tabId);
       }
       await page.screenshot({ path: join(output, `${index + 1}-translated.png`), fullPage: false });
+      if (new URL(url).hostname === 'example.com') {
+        await harness.reload();
+        await until(async () => await harness.locator('body').getAttribute('data-page-phase') === 'translated' && await harness.locator('body').getAttribute('data-engine-phase') === 'ready');
+        await harness.locator('.panel').screenshot({ path: join(output, 'popup.png') });
+        await harness.emulateMedia({ colorScheme: 'dark' });
+        await harness.locator('.panel').screenshot({ path: join(output, 'popup-dark.png') });
+        await harness.emulateMedia({ colorScheme: 'light' });
+      }
       if (url.endsWith('/article')) {
         await harness.locator('.panel').screenshot({ path: join(output, 'popup.png') });
         await harness.locator('#restore').click();
