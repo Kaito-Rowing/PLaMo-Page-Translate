@@ -101,7 +101,6 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   let job;
   if (message.type === 'ENGINE_STATUS') job = status();
   else if (message.type === 'ENGINE_PREPARE') job = prepare(message.mode === 'cpu' ? 'cpu' : 'gpu');
-  else if (message.type === 'ENGINE_TEST') job = engineMessage('TEST');
   else if (message.type === 'TRANSLATE_TEXT') job = translate(message.text, message.context).then((translation) => ({ ok: true, translation }));
   else return false;
   Promise.resolve(job).then(reply).catch((error) => reply({ ok: false, error: String(error?.message || error) }));

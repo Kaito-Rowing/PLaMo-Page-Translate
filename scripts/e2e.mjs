@@ -120,6 +120,7 @@ try {
     if (url.endsWith('/article')) {
       // Exercise the actual popup controls in addition to message routing.
       await harness.reload();
+      assert.equal(await harness.locator('#test').count(), 0, 'No manual diagnostic button in the product popup');
       await harness.locator('#translate').click();
     } else await pageSend(tabId, 'PAGE_TRANSLATE');
     if (url.endsWith('/cancel')) {
@@ -205,12 +206,11 @@ try {
   assert.equal(offscreen.length, 1);
   await harness.evaluate(() => chrome.offscreen.closeDocument());
   assert.equal((await send('ENGINE_PREPARE', { mode: report.mode })).ok, true);
-  await until(async () => {
+  const offline = await until(async () => {
     const state = await send('ENGINE_STATUS');
     if (state.phase === 'error') throw new Error(JSON.stringify(state));
-    return state.phase === 'ready';
+    return state.phase === 'ready' && { ok: true, translation: state.smokeTranslation };
   });
-  const offline = await send('ENGINE_TEST');
   assert.equal(offline.ok, true);
   assert.match(offline.translation, /[ぁ-ゟ゠-ヿ一-龯]/u);
   report.offline = offline;

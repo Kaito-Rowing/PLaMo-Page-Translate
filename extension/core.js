@@ -7,17 +7,6 @@
 })(globalThis, function () {
   "use strict";
 
-  const STOP_TOKENS = ["<|plamo:tag|>", "<|plamo:bos|>"];
-
-  function isSupportedPage(url) {
-    try {
-      const u = new URL(url);
-      return u.protocol === "https:" || u.protocol === "http:";
-    } catch {
-      return false;
-    }
-  }
-
   function shouldTranslateText(value) {
     if (typeof value !== "string") return false;
     const text = value.trim();
@@ -61,34 +50,5 @@
     return match ? match[1] + translated + match[3] : translated;
   }
 
-  function makeRequest(text) {
-    if (!shouldTranslateText(text) || text.length > 1200) {
-      throw new TypeError("Invalid translation segment (maximum 1200 characters)");
-    }
-    return {
-      model: "plamo-3-translate",
-      messages: [{ role: "user", content: text }],
-      chat_template_kwargs: { target_lang: "ja", form: "plain" },
-      temperature: 0,
-      max_tokens: Math.min(2048, Math.max(128, Math.ceil(text.length * 2))),
-      stop: STOP_TOKENS
-    };
-  }
-
-  function readTranslation(response) {
-    const answer = response?.choices?.[0]?.message?.content;
-    if (typeof answer !== "string") throw new Error("モデルの応答形式が正しくありません。");
-    if (response.choices[0].finish_reason === "length") {
-      throw new Error("訳文がトークン上限で切れました。文章を短くしてください。");
-    }
-    // The documented stop sequences are passed to llama-server; strip as a safeguard.
-    const clean = answer.split(/<\|plamo:(?:tag|bos)\|>/u, 1)[0].trim();
-    if (!clean) throw new Error("モデルから空の訳文が返されました。");
-    return clean;
-  }
-
-  return Object.freeze({
-    isSupportedPage, shouldTranslateText, splitText,
-    restoreWhitespace, makeRequest, readTranslation
-  });
+  return Object.freeze({ shouldTranslateText, splitText, restoreWhitespace });
 });
