@@ -1,6 +1,6 @@
 {
   "name": "plamo-page-translate",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "Chrome MV3 full-page offline translation with PLaMo 3 Translate 2B GGUF + WebGPU",
   "scripts": {
@@ -8,7 +8,7 @@
     "test": "node --test tests/*.test.cjs",
     "check": "node scripts/check.mjs",
     "test:e2e": "node scripts/e2e.mjs",
-    "test:dom": "playwright test tests/paragraph.spec.mjs --workers=1 --reporter=line --output=browser-test-results"
+    "test:dom": "playwright test tests/paragraph.spec.mjs tests/popup.spec.mjs --workers=1 --reporter=line --output=browser-test-results"
   },
   "dependencies": {
     "@wllama/wllama": "3.13.0"

@@ -1,15 +1,13 @@
-固定フォルダーへの配置と更新ツールを追加した版です。
+ポップアップのレイアウトと操作状態の表示を見直しました。
 
-1. **plamo-page-translate-webgpu.zip** を解凍し、**Update-PLaMo.cmd** を実行。
-2. Chromeで `%LOCALAPPDATA%\PLaMoPageTranslate\extension` を一度登録。
-3. 次回以降は `%LOCALAPPDATA%\PLaMoPageTranslate\Update-PLaMo.cmd` を実行し、拡張とページを再読み込み。
+- 翻訳ボタンと原文復元を上部に配置し、対象ページを表示
+- モデル設定は準備後に折りたたみ、GPU/CPUの切替をまとめて配置
+- ダウンロード・翻訳の進捗とエラー表示を整理
+- ライト／ダーク表示とキーボードフォーカスに対応
+- 翻訳中に状態確認が走っても、翻訳ボタンやモデル切替を再び有効にしないよう修正
 
-更新ファイルを検証し、前の版をバックアップします。Chromeのモデル保存領域は変更しません。
+表示名はPage Translate、PLaMoは使用するモデルとして設定内に表示しています。
 
-ポップアップの手動テストボタンを削除し、CPUモードの表記を整理しました。モデル準備時の自動確認は維持しています。未使用コードと重複テストを削除し、README・開発手順・変更履歴も整理しています。
+**更新方法:** `%LOCALAPPDATA%\PLaMoPageTranslate\Update-PLaMo.cmd` を実行し、Chromeの拡張と対象ページを再読み込みしてください。
 
-単体テスト、実ChromiumのDOMテスト、Windows PowerShell 5.1での配置・更新テストをCIで実行し、成功したZIPを公開しています。
-
-[使い方](https://github.com/Kaito-Rowing/PLaMo-Page-Translate#readme) / [変更履歴](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/blob/main/CHANGELOG.md)
-
-Chromeウェブストア配布ではないため、Chromeの再読み込みボタンだけでは最新版の取得は行われません。登録先を変更した場合、モデルの再取得が必要になる場合があります。専門用語・多義語の誤訳など、モデルによる訳の限界は残ります。
+単体テスト17件、実ChromiumのDOM・ポップアップテスト10件とWindows配置テストを通過した配布物を公開しています。実モデルでも記事、フォーム、動的更新、Example.comの翻訳・復元・オフライン再準備を確認しました。
