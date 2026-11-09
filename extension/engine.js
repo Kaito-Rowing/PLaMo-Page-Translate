@@ -19,8 +19,9 @@ function report(phase, message) {
 function status() {
   return { ok: state.phase !== 'error', ...state };
 }
-function prompt(text) {
+function prompt(text, context = '') {
   return '<|plamo:tag|>dataset<|plamo:msg|>translation'
+    + (context ? '<|plamo:tag|>context<|plamo:msg|>' + context : '')
     + '<|plamo:tag|>input<|plamo:msg|>' + text
     + '<|plamo:tag|>output<|plamo:key|>lang<|plamo:val|>ja<|plamo:key|>form<|plamo:val|>plain<|plamo:msg|>';
 }
@@ -89,11 +90,11 @@ async function start(mode = 'gpu') {
   return status();
 }
 class RuntimeInferenceError extends Error {}
-async function complete(instance, text) {
+async function complete(instance, text, context = '') {
   let response;
   try {
     response = await instance.createCompletion({
-      prompt: prompt(text), temperature: 0,
+      prompt: prompt(text, context), temperature: 0,
       max_tokens: Math.min(1600, Math.max(128, Math.ceil(text.length * 2))),
       stop: STOP, stream: false
     });
@@ -103,13 +104,13 @@ async function complete(instance, text) {
   if (response?.choices?.[0]?.finish_reason === 'length') {
     // Long or repetitive passages can exhaust generation even within n_ctx.
     // Retry smaller segments; never apply a partially generated translation.
-    if (text.length <= 160) throw new Error('訳文が途中で切れました。文章を短くしてください。');
+    if (text.length <= 160 || /<\/?x\d+>/u.test(text)) throw new Error('訳文が途中で切れました。文章を短くしてください。');
     const middle = Math.floor(text.length / 2);
     let cut = text.lastIndexOf(' ', middle);
     if (cut < middle / 2) cut = middle;
     if (/[\uD800-\uDBFF]/u.test(text[cut - 1])) cut--;
-    const left = await complete(instance, text.slice(0, cut).trim());
-    const right = await complete(instance, text.slice(cut).trim());
+    const left = await complete(instance, text.slice(0, cut).trim(), context);
+    const right = await complete(instance, text.slice(cut).trim(), context);
     return { ok: true, translation: left.translation + right.translation };
   }
   const raw = response?.choices?.[0]?.text;
@@ -118,15 +119,16 @@ async function complete(instance, text) {
   if (!translation) throw new Error('翻訳結果が空でした。');
   return { ok: true, translation };
 }
-async function doTranslate(text) {
+async function doTranslate(text, context = '') {
   if (state.phase !== 'ready' || !model?.isModelLoaded()) {
     throw new Error(state.error || 'モデルが準備できていません。「モデルを準備」を先に実行してください。');
   }
   if (typeof text !== 'string' || text.trim().length === 0 || text.length > 1200) {
     throw new Error('無効な翻訳対象です。');
   }
+  if (typeof context !== 'string' || context.length > 400) throw new Error('無効な翻訳の文脈です。');
   try {
-    return await complete(model, text);
+    return await complete(model, text, context);
   } catch (error) {
     if (!(error instanceof RuntimeInferenceError)) throw error;
     // A failed native inference may have left the WASM runtime in a bad state.
@@ -156,7 +158,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   }
   if (message.action === 'TRANSLATE') {
     // One inference at a time: wllama's server-context is loaded with n_parallel=1.
-    const job = chain.then(() => doTranslate(message.text));
+    const job = chain.then(() => doTranslate(message.text, message.context));
     chain = job.catch(() => {});
     job.then(reply).catch((e) => reply({ ok: false, error: String(e?.message || e) }));
     return true;

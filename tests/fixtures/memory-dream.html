@@ -1,0 +1,137 @@
+<!-- Regression fixture: Kaito-Rowing/dsh-memory-dream README.md, commit f683fcdd880c96113bd9239bb8a781d70d051abe, MIT. Rendered by GitHub REST API on 2026-11-09. -->
+<div id="readme" class="md" data-path="README.md"><article class="markdown-body entry-content container-lg" itemprop="text"><div class="markdown-heading" dir="auto"><h1 class="heading-element" dir="auto">dsh-memory-dream</h1><a id="user-content-dsh-memory-dream" class="anchor" aria-label="Permalink: dsh-memory-dream" href="#dsh-memory-dream"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto">English | <a href="README.ja.md">日本語</a></p>
+<p dir="auto">Layered agent memory for <a href="https://github.com/deepseek-ai/deepseek-harness">DeepSeek Harness</a>, with a nightly pass that <strong>corrects</strong> what the agent got wrong.</p>
+<p dir="auto">Most memory plugins help an agent remember more. This one is built around a different question: what should be allowed to persist, and how does the agent find out it was wrong?</p>
+<p dir="auto">The design follows Anthropic's published account of agent memory as a hierarchy — <em><a href="https://www.anthropic.com/research/components-of-agent-memory" rel="nofollow">The components of agent memory</a></em> (2026) — and the hard-cap mechanism from Hermes Agent's <code>MEMORY.md</code>.</p>
+<p dir="auto"><a target="_blank" rel="noopener noreferrer" href="docs/architecture.svg"><img src="docs/architecture.svg" alt="Architecture" style="max-width: 100%;"></a></p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">The hierarchy</h2><a id="user-content-the-hierarchy" class="anchor" aria-label="Permalink: The hierarchy" href="#the-hierarchy"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto" data-snippet-clipboard-copy-content="injected context   ~/.dsh/memory/MEMORY.md          index only, hard cap
+      ↕
+representations    ~/.dsh/memory/wiki/&lt;topic&gt;.md    detail, one topic per page
+      ↕
+notes              ~/.dsh/memory/notes/YYYY-MM-DD.md  raw day-to-day
+      ↕
+transcripts        ~/.dsh/sessions/                 the session log itself"><pre class="notranslate"><code>injected context   ~/.dsh/memory/MEMORY.md          index only, hard cap
+      ↕
+representations    ~/.dsh/memory/wiki/&lt;topic&gt;.md    detail, one topic per page
+      ↕
+notes              ~/.dsh/memory/notes/YYYY-MM-DD.md  raw day-to-day
+      ↕
+transcripts        ~/.dsh/sessions/                 the session log itself
+</code></pre></div>
+<p dir="auto">Plus two artifacts the dream pass writes:</p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto" data-snippet-clipboard-copy-content="dreams      ~/.dsh/memory/dreams/YYYY-MM-DD.md   historical record, never deleted
+synthesis   ~/.dsh/memory/dreams/SYNTHESIS.md    current guidance, rewritten"><pre class="notranslate"><code>dreams      ~/.dsh/memory/dreams/YYYY-MM-DD.md   historical record, never deleted
+synthesis   ~/.dsh/memory/dreams/SYNTHESIS.md    current guidance, rewritten
+</code></pre></div>
+<p dir="auto">The point of the split: the injected layer stays small, and everything else is reachable but not paid for on every turn.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Two ideas worth stealing</h2><a id="user-content-two-ideas-worth-stealing" class="anchor" aria-label="Permalink: Two ideas worth stealing" href="#two-ideas-worth-stealing"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<div class="markdown-heading" dir="auto"><h3 class="heading-element" dir="auto">1. The cap forces consolidation</h3><a id="user-content-1-the-cap-forces-consolidation" class="anchor" aria-label="Permalink: 1. The cap forces consolidation" href="#1-the-cap-forces-consolidation"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><code>MEMORY.md</code> has a character limit (default 4,000). When a write would exceed it, the <code>memory</code> tool rejects the write and returns every current entry:</p>
+<div class="highlight highlight-source-json notranslate position-relative overflow-auto" dir="auto" data-snippet-clipboard-copy-content="{
+  &quot;success&quot;: false,
+  &quot;error&quot;: &quot;MEMORY.md would exceed its limit (4231/4000 chars, 231 over). ...&quot;,
+  &quot;current_entries&quot;: [&quot;...&quot;, &quot;...&quot;],
+  &quot;usage&quot;: &quot;4000/4000&quot;
+}"><pre>{
+  <span class="pl-ent">"success"</span>: <span class="pl-c1">false</span>,
+  <span class="pl-ent">"error"</span>: <span class="pl-s"><span class="pl-pds">"</span>MEMORY.md would exceed its limit (4231/4000 chars, 231 over). ...<span class="pl-pds">"</span></span>,
+  <span class="pl-ent">"current_entries"</span>: [<span class="pl-s"><span class="pl-pds">"</span>...<span class="pl-pds">"</span></span>, <span class="pl-s"><span class="pl-pds">"</span>...<span class="pl-pds">"</span></span>],
+  <span class="pl-ent">"usage"</span>: <span class="pl-s"><span class="pl-pds">"</span>4000/4000<span class="pl-pds">"</span></span>
+}</pre></div>
+<p dir="auto">The limit is checked only against the <strong>final result of a batch</strong>, so the agent can remove or shorten stale entries and add the new one in a single <code>operations</code> call. It cannot dribble entries in and hope.</p>
+<p dir="auto">This is a forcing function, not a storage limit. An agent that never hits the cap is an agent that never consolidates.</p>
+<div class="markdown-heading" dir="auto"><h3 class="heading-element" dir="auto">2. The dream corrects, it does not generate</h3><a id="user-content-2-the-dream-corrects-it-does-not-generate" class="anchor" aria-label="Permalink: 2. The dream corrects, it does not generate" href="#2-the-dream-corrects-it-does-not-generate"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><code>memory_dream</code> returns the current <code>MEMORY.md</code> and the last N days of notes as material, and the prompt tells the agent to <strong>verify what is already written</strong> rather than add new facts. The interesting output is a correction:</p>
+<blockquote>
+<p dir="auto">The note says the deadline was the 7th; MEMORY.md says the 8th. The 8th came from a rebooking. Patching.</p>
+</blockquote>
+<p dir="auto">Anthropic's Pokémon experiment is the clearest version of why this matters: an agent wrote down that a landmark was on the east side of a mountain when it was on the west. Uncorrected, it walked off a ledge three times and gave up. Corrected against the transcript, it went straight back in. Generation would not have caught that. Only checking would.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Injection scanning</h2><a id="user-content-injection-scanning" class="anchor" aria-label="Permalink: Injection scanning" href="#injection-scanning"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto">Memory is read back into the prompt on later turns. That makes it an injection surface: whatever the agent picks up from a web page and writes into <code>MEMORY.md</code> becomes an instruction to its future self.</p>
+<p dir="auto">Every read path scans entry by entry. A hit is replaced, not dropped:</p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto" data-snippet-clipboard-copy-content="[BLOCKED: MEMORY.md matched injection pattern (override, exfil-prompt).
+The text was not loaded. If you did not write this, check and delete the entry.]"><pre class="notranslate"><code>[BLOCKED: MEMORY.md matched injection pattern (override, exfil-prompt).
+The text was not loaded. If you did not write this, check and delete the entry.]
+</code></pre></div>
+<p dir="auto">Per-entry rather than per-file, deliberately: one poisoned entry should not cost you the whole store.</p>
+<p dir="auto">Detected: instruction overrides (EN/JA), role reassignment, system-prompt exfiltration, secret exfiltration, permission-grant claims, invisible/bidi characters.</p>
+<p dir="auto"><code>memory_audit</code> scans every layer at once and can remove flagged <code>MEMORY.md</code> entries with <code>fix: true</code>.</p>
+<p dir="auto"><strong>This is a tripwire, not a guarantee.</strong> Regexy heuristics miss paraphrased attacks and will occasionally flag legitimate text (a note <em>about</em> injection techniques). The goal is noticing, not blocking.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Install</h2><a id="user-content-install" class="anchor" aria-label="Permalink: Install" href="#install"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<div class="highlight highlight-source-shell notranslate position-relative overflow-auto" dir="auto" data-snippet-clipboard-copy-content="dsh plugin --profile web add github:OWNER/dsh-memory-dream"><pre>dsh plugin --profile web add github:OWNER/dsh-memory-dream</pre></div>
+<p dir="auto">Or from a local checkout:</p>
+<div class="highlight highlight-source-shell notranslate position-relative overflow-auto" dir="auto" data-snippet-clipboard-copy-content="dsh plugin --profile web add link:/path/to/dsh-memory-dream"><pre>dsh plugin --profile web add link:/path/to/dsh-memory-dream</pre></div>
+<p dir="auto">Restart the profile. The plugin creates <code>~/.dsh/memory/</code> on first use.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Tools</h2><a id="user-content-tools" class="anchor" aria-label="Permalink: Tools" href="#tools"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<markdown-accessiblity-table><table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory</code></td>
+<td><code>add</code> / <code>patch</code> / <code>remove</code> against <code>MEMORY.md</code>. Enforces the cap.</td>
+</tr>
+<tr>
+<td><code>memory_note</code></td>
+<td>Append to today's dated note.</td>
+</tr>
+<tr>
+<td><code>memory_wiki</code></td>
+<td>Read or write a topic page. Omit <code>content</code> to read.</td>
+</tr>
+<tr>
+<td><code>memory_dream</code></td>
+<td>Return dream material; optionally write <code>SYNTHESIS.md</code>.</td>
+</tr>
+<tr>
+<td><code>memory_status</code></td>
+<td>Usage, counts, and what exists.</td>
+</tr>
+<tr>
+<td><code>memory_audit</code></td>
+<td>Scan all layers for injection patterns.</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Config</h2><a id="user-content-config" class="anchor" aria-label="Permalink: Config" href="#config"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<div class="highlight highlight-source-yaml notranslate position-relative overflow-auto" dir="auto" data-snippet-clipboard-copy-content="- id: memory-dream
+  name: dsh-memory-dream
+  config:
+    memoryCharLimit: 4000   # cap on MEMORY.md
+    lookbackDays: 14        # how many days of notes the dream reads
+    memoryDir: null         # default: $DSH_HOME/memory
+    scanInjection: true     # set false to disable the scanner"><pre>- <span class="pl-ent">id</span>: <span class="pl-s">memory-dream</span>
+  <span class="pl-ent">name</span>: <span class="pl-s">dsh-memory-dream</span>
+  <span class="pl-ent">config</span>:
+    <span class="pl-ent">memoryCharLimit</span>: <span class="pl-c1">4000</span>   <span class="pl-c"><span class="pl-c">#</span> cap on MEMORY.md</span>
+    <span class="pl-ent">lookbackDays</span>: <span class="pl-c1">14</span>        <span class="pl-c"><span class="pl-c">#</span> how many days of notes the dream reads</span>
+    <span class="pl-ent">memoryDir</span>: <span class="pl-s">null         </span><span class="pl-c"><span class="pl-c">#</span> default: $DSH_HOME/memory</span>
+    <span class="pl-ent">scanInjection</span>: <span class="pl-s">true     </span><span class="pl-c"><span class="pl-c">#</span> set false to disable the scanner</span></pre></div>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Scheduling the dream</h2><a id="user-content-scheduling-the-dream" class="anchor" aria-label="Permalink: Scheduling the dream" href="#scheduling-the-dream"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto">DSH's <code>schedule</code> service can deliver a prompt to a fresh session on a timer. Create a task with an RRULE and a prompt like:</p>
+<div class="snippet-clipboard-content notranslate position-relative overflow-auto" data-snippet-clipboard-copy-content="Run memory_dream. Read the material and verify what is already written
+rather than adding new facts. Patch entries that contradict the notes,
+move detail into memory_wiki, and remove what is stale. Then write today's
+dream: what you corrected, what is unresolved, and tomorrow's first move.
+Run memory_audit and investigate anything it flags."><pre class="notranslate"><code>Run memory_dream. Read the material and verify what is already written
+rather than adding new facts. Patch entries that contradict the notes,
+move detail into memory_wiki, and remove what is stale. Then write today's
+dream: what you corrected, what is unresolved, and tomorrow's first move.
+Run memory_audit and investigate anything it flags.
+</code></pre></div>
+<p dir="auto">Nightly is a reasonable default. Anthropic notes that the right cadence is still an open question — if the dream keeps finding nothing, run it less often.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">Design notes</h2><a id="user-content-design-notes" class="anchor" aria-label="Permalink: Design notes" href="#design-notes"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto"><strong>Why a cap and not a token budget?</strong> Characters are cheap to count, deterministic, and visible to the model in the usage line. A token budget would need the tokenizer at write time.</p>
+<p dir="auto"><strong>Why per-entry injection scanning?</strong> Because a single bad entry is recoverable and a corrupted store is not. The blocked entry stays visible as a <code>[BLOCKED: ...]</code> marker so the agent can see something was removed and why.</p>
+<p dir="auto"><strong>Why separate <code>dreams/</code> from <code>SYNTHESIS.md</code>?</strong> The dated dream is history — it should never be rewritten. The synthesis is current guidance — it should be rewritten whenever the picture changes. Collapsing them means either losing the trail or carrying stale instructions forever.</p>
+<p dir="auto"><strong>Why does <code>memory_dream</code> return material instead of writing the dream itself?</strong> Because the writing is the model's job, and the plugin should not pretend to do reasoning. The tool assembles inputs and provides a place to write; the prompt supplies the judgment.</p>
+<div class="markdown-heading" dir="auto"><h2 class="heading-element" dir="auto">License</h2><a id="user-content-license" class="anchor" aria-label="Permalink: License" href="#license"><svg data-component="Octicon" class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path d="m7.775 3.275 1.25-1.25a3.5 3.5 0 1 1 4.95 4.95l-2.5 2.5a3.5 3.5 0 0 1-4.95 0 .751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018 1.998 1.998 0 0 0 2.83 0l2.5-2.5a2.002 2.002 0 0 0-2.83-2.83l-1.25 1.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042Zm-4.69 9.64a1.998 1.998 0 0 0 2.83 0l1.25-1.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042l-1.25 1.25a3.5 3.5 0 1 1-4.95-4.95l2.5-2.5a3.5 3.5 0 0 1 4.95 0 .751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018 1.998 1.998 0 0 0-2.83 0l-2.5 2.5a1.998 1.998 0 0 0 0 2.83Z"></path></svg></a></div>
+<p dir="auto">MIT</p>
+</article></div>
+

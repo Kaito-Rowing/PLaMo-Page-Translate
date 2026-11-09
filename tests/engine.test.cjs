@@ -105,3 +105,16 @@ test('truncated output is retried in smaller pieces without resetting the runtim
   assert.equal((await e.send('STATUS')).phase, 'ready');
   assert.equal(e.instances[0].exited, undefined);
 });
+
+test('passes bounded page context to PFML without splitting annotated markup on truncation', async () => {
+  const e = engine({ completion: async options => ({ choices: [{ text: '訳文。', finish_reason: options.prompt.includes('<x0>') ? 'length' : 'stop' }] }) });
+  await e.send('START');
+  await e.settled();
+  const response = await e.send('TRANSLATE', { text: 'Read <x0>this guide</x0> first.', context: 'Agent memory architecture' });
+  assert.equal(response.ok, false);
+  assert.equal(e.instances[0].calls.length, 2);
+  assert.match(e.instances[0].calls[1].prompt, /context<\|plamo:msg\|>Agent memory architecture/);
+  assert.equal((await e.send('STATUS')).phase, 'ready');
+  const invalid = await e.send('TRANSLATE', { text: 'Hello.', context: 'x'.repeat(401) });
+  assert.equal(invalid.ok, false);
+});

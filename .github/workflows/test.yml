@@ -15,6 +15,8 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - run: npx playwright install --with-deps chromium --only-shell
+      - run: npm run test:dom
       - run: npm run build
       - name: Package unpacked extension
         run: cd dist && zip -q -r ../plamo-page-translate-webgpu.zip .

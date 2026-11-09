@@ -19,6 +19,7 @@ const fixtures = {
   '/multilingual': wrap('<h1>Welcome to our website.</h1><p>Bonjour, je suis heureux de vous rencontrer.</p><p>Guten Morgen. Wie geht es Ihnen?</p><p>Esta página contiene información sobre nuestra investigación.</p><p id="japanese">これは元から日本語の文章です。</p>'),
   '/dynamic': wrap('<h1>Latest news</h1><p id="changing">The weather is nice today.</p><div id="feed"></div>'),
   '/cancel': wrap('<h1>Welcome to our website.</h1><p>The weather is nice today.</p>'),
+  '/memory-dream': wrap(await readFile(join(root, 'tests/fixtures/memory-dream.html'), 'utf8')).replace('<title>Translation test</title>', '<title>dsh-memory-dream · GitHub</title>'),
 };
 const server = createServer((req, res) => {
   res.writeHead(fixtures[req.url] ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -102,7 +103,7 @@ try {
     }, 600000);
   }
   const paths = Object.keys(fixtures).filter(p => !process.env.E2E_CASES || process.env.E2E_CASES.split(',').includes(p.slice(1)));
-  const urls = process.env.E2E_LIVE === '1' ? [
+  const urls = process.env.E2E_URLS ? process.env.E2E_URLS.split(',') : process.env.E2E_LIVE === '1' ? [
     'https://example.com/',
     'https://info.cern.ch/hypertext/WWW/TheProject.html',
     'https://www.iana.org/help/example-domains',
@@ -127,6 +128,18 @@ try {
       assert.deepEqual(await snapshot(page), before, 'Late responses cannot overwrite restored text');
     } else {
       const status = await translated(tabId);
+      if (url.includes('dsh-memory-dream') || url.endsWith('/memory-dream')) {
+        const article = page.locator('.markdown-body').first();
+        const text = await article.innerText();
+        report.readmeTranslation = text;
+        report.readmeImageLabels = await article.locator('img[alt]').evaluateAll(images => images.map(img => img.alt));
+        report.readmeSource = url.endsWith('/memory-dream') ? 'GitHub REST rendered README fixture, f683fcdd880c96113bd9239bb8a781d70d051abe' : url;
+        assert.doesNotMatch(text, /一泊券|～向け|～に対して|<\/?x\d+>/u);
+        assert.match(text, /DeepSeek Harness/);
+        assert.equal(await article.locator('code').filter({ hasText: 'operations' }).count(), 1);
+        assert.ok(await article.locator('a[href="https://github.com/deepseek-ai/deepseek-harness"]').count());
+        console.log('README sample', text.slice(0, 1500));
+      }
       assert.ok(status.completed > 0, 'Actually translated page content');
       assert.match(await page.locator('body').innerText(), /[ぁ-ゟ゠-ヿ一-龯]/u);
       if (url.endsWith('/article')) {
