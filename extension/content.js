@@ -19,6 +19,8 @@
   ].join(",");
   const TRANSLATABLE_ATTRIBUTES = ["placeholder", "title", "aria-label", "alt"];
   const MAX_TASKS = 1200;
+  const BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,dt,dd,figcaption,td,th,blockquote";
+  const INLINE = new Set(["A", "EM", "STRONG", "B", "I", "SPAN", "SMALL", "DEL", "S", "SUB", "SUP", "MARK", "ABBR", "CITE", "Q", "CODE", "KBD", "SAMP", "BR"]);
   const CONCURRENCY = 2;
   let currentSession = null;
   let nextId = 0;
@@ -61,7 +63,8 @@
 
   function enqueueText(session, node) {
     if (!node || node.nodeType !== Node.TEXT_NODE || !node.isConnected) return;
-    if (!canTranslateNode(node)) return;
+    if (!canTranslateNode(node) || !core.shouldTranslateText(node.nodeValue)) return;
+    if (enqueueBlock(session, node)) return;
     const original = node.nodeValue;
     const recorded = session.textRecords.get(node);
     if (recorded && recorded.translated === original) return;
@@ -70,6 +73,84 @@
     session.pendingText.add(node);
     session.queue.push({ kind: "text", node, original });
     session.total++;
+  }
+
+  // Translate a sentence with its inline markup in one request. Only these
+  // synthetic tags cross the engine boundary; model-generated HTML is never used.
+  function describeBlock(root) {
+    const elements = [];
+    const snapshots = new Map([[root, [...root.childNodes]]]);
+    const walk = (parent) => [...parent.childNodes].map(child => {
+      if (child.nodeType === Node.TEXT_NODE) return child.nodeValue;
+      if (child.nodeType !== Node.ELEMENT_NODE) throw new Error('unsupported node');
+      if (!INLINE.has(child.tagName)) throw new Error('non-inline element');
+      const protectedCode = ["CODE", "KBD", "SAMP"].includes(child.tagName);
+      if (!protectedCode && (child.matches(IGNORE_ATTRIBUTES) || !visible(child))) throw new Error('excluded element');
+      const id = elements.length;
+      elements.push({ node: child, parent, protectedCode });
+      snapshots.set(child, [...child.childNodes]);
+      const text = protectedCode ? child.textContent : child.tagName === 'BR' ? '' : walk(child);
+      return `<x${id}>${text}</x${id}>`;
+    }).join('');
+    try {
+      const markup = walk(root);
+      if (!elements.length || markup.length > 1200 || /<\/?x\d+>/u.test(root.textContent)) return null;
+      return { root, elements, snapshots, markup };
+    } catch { return null; }
+  }
+
+  function blockMarkup(block) {
+    const ids = new Map(block.elements.map((entry, id) => [entry.node, id]));
+    const walk = parent => [...parent.childNodes].map(child => {
+      if (child.nodeType === Node.TEXT_NODE) return child.nodeValue;
+      const id = ids.get(child);
+      if (id === undefined) return '\u0000';
+      return `<x${id}>${block.elements[id].protectedCode ? child.textContent : walk(child)}</x${id}>`;
+    }).join('');
+    return walk(block.root);
+  }
+
+  function enqueueBlock(session, node) {
+    const root = node.parentElement.closest(BLOCKS);
+    if (!root?.childNodes || !canTranslateNode(node)) return false;
+    const record = session.blockRecords.get(root);
+    if (record && blockMarkup(record.block) === record.translated) return true;
+    if (record) session.blockRecords.delete(root); // site-owned edits become the new source
+    if (session.pendingBlocks.has(root)) return true;
+    const block = describeBlock(root);
+    if (!block || !core.shouldTranslateText(root.textContent)) return false;
+    if (!withinLimit(session)) return true;
+    session.pendingBlocks.add(root);
+    session.queue.push({ kind: 'block', node: root, original: block.markup, block });
+    session.total++;
+    return true;
+  }
+
+  function parseInlineTranslation(block, text) {
+    const parts = text.split(/(<\/?x\d+>)/u);
+    const stack = [{ node: block.root, children: [] }];
+    const seen = new Set();
+    const replacements = new Map();
+    for (const part of parts) {
+      const match = /^<(\/?)x(\d+)>$/u.exec(part);
+      if (!match) { if (part) stack.at(-1).children.push(document.createTextNode(part)); continue; }
+      const id = Number(match[2]);
+      const entry = block.elements[id];
+      if (!entry) throw new Error('翻訳で未知の書式マーカーが返されました。原文を保持します。');
+      if (!match[1]) {
+        if (seen.has(id) || entry.parent !== stack.at(-1).node) throw new Error('翻訳で書式の構造が変わりました。原文を保持します。');
+        seen.add(id);
+        stack.at(-1).children.push(entry.node);
+        stack.push({ node: entry.node, children: [], id });
+      } else {
+        if (stack.length === 1 || stack.at(-1).id !== id) throw new Error('翻訳の書式マーカーが対応していません。原文を保持します。');
+        const current = stack.pop();
+        if (!entry.protectedCode) replacements.set(current.node, current.children);
+      }
+    }
+    if (stack.length !== 1 || seen.size !== block.elements.length) throw new Error('翻訳で書式マーカーが欠落しました。原文を保持します。');
+    replacements.set(block.root, stack[0].children);
+    return replacements;
   }
 
   function enqueueAttribute(session, element, attribute) {
@@ -110,16 +191,19 @@
   }
 
   function taskValue(task) {
+    if (task.kind === 'block') return blockMarkup(task.block);
     return task.kind === "text" ? task.node.nodeValue : task.node.getAttribute(task.attribute);
   }
 
   function isTaskStillValid(task) {
     if (!task.node.isConnected || taskValue(task) !== task.original) return false;
+    if (task.kind === 'block') return visible(task.node) && !task.node.closest(IGNORE_SUBTREE) && !!describeBlock(task.node);
     return task.kind === "text" ? canTranslateNode(task.node) :
       canTranslateAttribute(task.node, task.attribute);
   }
 
   function releasePending(session, task) {
+    if (task.kind === 'block') { session.pendingBlocks.delete(task.node); return; }
     if (task.kind === "text") {
       session.pendingText.delete(task.node);
     } else {
@@ -128,7 +212,11 @@
   }
 
   function updateRecordAndDOM(session, task, translated) {
-    if (task.kind === "text") {
+    if (task.kind === 'block') {
+      const replacements = parseInlineTranslation(task.block, translated);
+      for (const [element, children] of replacements) element.replaceChildren(...children);
+      session.blockRecords.set(task.node, { block: task.block, translated: blockMarkup(task.block) });
+    } else if (task.kind === "text") {
       session.textRecords.set(task.node, { original: task.original, translated });
       task.node.nodeValue = translated;
     } else {
@@ -143,16 +231,16 @@
   }
 
   async function translateTask(session, task) {
-    const pieces = core.splitText(task.original, 900);
+    const pieces = task.kind === 'block' ? [task.original] : core.splitText(task.original, 900);
     const results = [];
     for (const piece of pieces) {
       if (!session.enabled || currentSession !== session) return false;
-      const answer = await chrome.runtime.sendMessage({ type: "TRANSLATE_TEXT", text: piece });
+      const answer = await chrome.runtime.sendMessage({ type: "TRANSLATE_TEXT", text: piece, context: session.context });
       if (!answer?.ok) throw new Error(answer?.error || "翻訳APIが応答しませんでした。");
       results.push(answer.translation);
     }
     if (!session.enabled || currentSession !== session || !isTaskStillValid(task)) return false;
-    updateRecordAndDOM(session, task, core.restoreWhitespace(task.original, results.join("")));
+    updateRecordAndDOM(session, task, task.kind === 'block' ? results.join('') : core.restoreWhitespace(task.original, results.join("")));
     return true;
   }
 
@@ -192,7 +280,8 @@
           // Site re-render during an in-flight request: queue the replacement text.
           if (session.enabled && currentSession === session &&
               task.node.isConnected && taskValue(task) !== task.original) {
-            if (task.kind === "text") enqueueText(session, task.node);
+            if (task.kind === 'block') scanSubtree(session, task.node);
+            else if (task.kind === "text") enqueueText(session, task.node);
             else enqueueAttribute(session, task.node, task.attribute);
           }
         }
@@ -232,6 +321,10 @@
     }
     session.observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
+        let managed = mutation.target?.nodeType === Node.TEXT_NODE ? mutation.target.parentElement : mutation.target;
+        while (managed && !session.blockRecords.has(managed)) managed = managed.parentElement;
+        const record = managed && session.blockRecords.get(managed);
+        if (record && blockMarkup(record.block) === record.translated) continue;
         if (mutation.type === "childList") {
           for (const node of mutation.addedNodes) added.add(node);
         } else if (mutation.type === "characterData") {
@@ -272,6 +365,11 @@
     if (!s) return status();
     s.enabled = false;
     s.observer?.disconnect();
+    for (const [root, record] of s.blockRecords) {
+      if (root.isConnected && blockMarkup(record.block) === record.translated) {
+        for (const [element, children] of [...record.block.snapshots].reverse()) element.replaceChildren(...children);
+      }
+    }
     for (const [node, record] of s.textRecords) {
       if (node.isConnected && node.nodeValue === record.translated) node.nodeValue = record.original;
     }
@@ -287,6 +385,13 @@
     return status();
   }
 
+  function pageContext() {
+    const area = document.querySelector('article') || document.querySelector('main') || document.body;
+    const introduction = [...(area?.querySelectorAll('p') || [])]
+      .find(p => p.textContent?.trim().length >= 60 && !p.closest(IGNORE_SUBTREE));
+    return `${document.title || ''}\n${introduction?.textContent || ''}`.trim().slice(0, 400);
+  }
+
   function start() {
     if (currentSession && currentSession.enabled) {
       scanSubtree(currentSession, document.body);
@@ -296,7 +401,8 @@
     if (currentSession) restore();
     const session = {
       id: ++nextId, enabled: true, phase: "translating", queue: [],
-      pendingText: new Set(), pendingAttributes: new Map(),
+      pendingText: new Set(), pendingAttributes: new Map(), pendingBlocks: new Set(), blockRecords: new Map(),
+      context: pageContext(),
       textRecords: new Map(), attributeRecords: new Map(), observer: null,
       total: 0, completed: 0, failed: 0, skipped: 0,
       activeWorkers: 0, consecutiveErrors: 0, lastError: null, limited: false

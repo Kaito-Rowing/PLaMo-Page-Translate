@@ -105,3 +105,13 @@ test('manifest requires no local server and all scripts run under MV3 CSP', () =
   assert.doesNotMatch(JSON.stringify(manifest), /localhost|127\.0\.0\.1/);
   assert.ok(manifest.host_permissions.some((x) => x.startsWith('https://huggingface.co')));
 });
+
+test('separates identical words by page context in the translation cache', async () => {
+  const app = makeBackground();
+  await app.message({ type: 'ENGINE_PREPARE' });
+  await app.message({ type: 'TRANSLATE_TEXT', text: 'Architecture', context: 'Software engineering' });
+  await app.message({ type: 'TRANSLATE_TEXT', text: 'Architecture', context: 'Building design' });
+  assert.equal(app.engineCalls.filter(x => x.action === 'TRANSLATE').length, 2);
+  assert.equal(app.engineCalls.filter(x => x.action === 'TRANSLATE')[0].context, 'Software engineering');
+  assert.equal((await app.message({ type: 'TRANSLATE_TEXT', text: 'Architecture', context: 'x'.repeat(401) })).ok, false);
+});

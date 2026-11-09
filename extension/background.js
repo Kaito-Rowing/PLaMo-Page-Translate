@@ -74,17 +74,18 @@ async function prepare(mode = 'gpu') {
   return engineMessage('START', { mode }); // responds immediately; 1.8 GB download continues offscreen
 }
 
-async function translate(text) {
+async function translate(text, context = '') {
   if (typeof text !== 'string' || !PLaMoCore.shouldTranslateText(text) || text.length > 1200) {
     throw new Error('翻訳対象の文字列が無効です（上限1200文字）。');
   }
+  if (typeof context !== 'string' || context.length > 400) throw new Error('翻訳の文脈が無効です。');
   await cacheReady;
-  const key = `plamo3-2b-q4km:wllama313:ja:plain\u0000${text}`;
+  const key = JSON.stringify(['plamo3-context-v1', context, text]);
   if (cache.has(key)) return cache.get(key);
   if (pending.has(key)) return pending.get(key);
   const promise = (async () => {
     if (!(await hasOffscreenDocument())) throw new Error('先に「モデルを準備」を押してください。');
-    const result = await engineMessage('TRANSLATE', { text });
+    const result = await engineMessage('TRANSLATE', { text, context });
     if (!result?.ok || typeof result.translation !== 'string') {
       throw new Error(result?.error || 'モデルが翻訳できませんでした。');
     }
@@ -101,7 +102,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (message.type === 'ENGINE_STATUS') job = status();
   else if (message.type === 'ENGINE_PREPARE') job = prepare(message.mode === 'cpu' ? 'cpu' : 'gpu');
   else if (message.type === 'ENGINE_TEST') job = engineMessage('TEST');
-  else if (message.type === 'TRANSLATE_TEXT') job = translate(message.text).then((translation) => ({ ok: true, translation }));
+  else if (message.type === 'TRANSLATE_TEXT') job = translate(message.text, message.context).then((translation) => ({ ok: true, translation }));
   else return false;
   Promise.resolve(job).then(reply).catch((error) => reply({ ok: false, error: String(error?.message || error) }));
   return true;
