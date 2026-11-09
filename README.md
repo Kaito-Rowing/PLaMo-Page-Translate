@@ -1,63 +1,152 @@
+<div align="center">
+
+<img src="extension/icons/icon-128.png" width="72" height="72" alt="">
+
 # PLaMo Page Translate
 
-Webページを、PC内の **PLaMo 3 Translate 2B** で日本語に翻訳するChrome拡張です。翻訳用サーバーやAPIキーは不要。WebGPUで動作し、CPUモードも選べます。
+**PC内のAIで、Webページを日本語に。**
 
-## インストール（Windows）
+Chrome向けローカル翻訳拡張 · Powered by PLaMo 3 Translate
 
-1. [最新版のリリース](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)から **plamo-page-translate-webgpu.zip** をダウンロードして解凍します。
-2. **Update-PLaMo.cmd** を実行します。最新版の取得・検証後、次の固定フォルダーに配置します。
+[![Release](https://img.shields.io/github/v/release/Kaito-Rowing/PLaMo-Page-Translate?label=release)](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)
+[![CI](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/actions/workflows/test.yml/badge.svg)](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/actions/workflows/test.yml)
+[![Chrome](https://img.shields.io/badge/Chrome-137%2B-4285F4?logo=googlechrome&logoColor=white)](#動作環境)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-   ```text
-   %LOCALAPPDATA%\PLaMoPageTranslate\extension
-   ```
+[**ダウンロード**](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest) · [インストール](#インストール) · [使い方](#使い方) · [FAQ](#faq)
 
-3. `chrome://extensions/` でデベロッパーモードをONにし、**「パッケージ化されていない拡張機能を読み込む」**から上のフォルダーを選択します。
+</div>
 
-管理者権限、Node.js、Python、CUDAの個別セットアップは不要です。GitHubの **Code → Download ZIP** はソースコードなので、インストールにはリリースのZIPを使ってください。
+---
 
-すでに別フォルダーから旧版を登録している場合、新しい登録後に旧版を無効にしてください。登録先を変えると拡張IDが変わり、モデルの再取得が必要になる場合があります。
+PLaMo Page Translateは、**PLaMo 3 Translate 2Bをブラウザ内で動かす**Chrome拡張です。開いているページを日本語に翻訳し、ボタンひとつで原文に戻せます。翻訳用サーバーやAPIキーの準備は不要です。
 
-## 更新
+## 特徴
 
-**%LOCALAPPDATA%\PLaMoPageTranslate\Update-PLaMo.cmd** を実行し、`chrome://extensions/` の拡張カードで **再読み込み** を押します。翻訳対象のWebページも再読み込みしてください。
+- **ローカルで翻訳** — 本文を外部の翻訳APIへ送信せず、PC内のWebGPUで推論。CPUモードも選べます。
+- **リンクや書式を保持** — リンク・強調・インラインコードを含む段落をまとめて翻訳します。
+- **原文へワンクリックで復元** — 翻訳中の取り消しにも対応します。
+- **追加コンテンツにも対応** — ページに後から追加された文章を検出し、表示領域から優先して処理します。
+- **モデルを保存して再利用** — 初回取得後は、保存済みモデルでオフラインでも推論できます。
 
-更新先は常に同じフォルダーです。モデルのキャッシュを削除せず、前の拡張ファイルは `backups/` に保存します。ダウンロードの検証や展開に失敗した場合、インストール済みのファイルは置き換えません。Chromeの再読み込みボタンだけでは最新版のダウンロードは行われません。
+<p align="center">
+  <img src="docs/images/popup.png" width="320" alt="PLaMo Page Translateの操作画面。GPUモデル準備完了、翻訳・原文復元ボタン、進捗を表示。">
+  <br>
+  <sub>実際の操作画面 — モデルを準備して、ページを翻訳。</sub>
+</p>
+
+## インストール
+
+Windowsでは同梱の更新ツールで配置できます。**管理者権限・Node.js・Python・CUDAの個別セットアップは不要**です。
+
+1. [Releases](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)から **`plamo-page-translate-webgpu.zip`** をダウンロードして解凍します。
+2. **`Update-PLaMo.cmd`** を実行します。最新版を取得・検証し、固定フォルダーへ配置します。
+3. Chromeで **`chrome://extensions/`** を開き、デベロッパーモードをONにします。**「パッケージ化されていない拡張機能を読み込む」**から、次のフォルダーを選択します。
+
+```text
+%LOCALAPPDATA%\PLaMoPageTranslate\extension
+```
+
+> GitHubの「Code → Download ZIP」はソースコードです。インストールには **ReleasesのZIP** を使ってください。
 
 ## 使い方
 
-1. 翻訳するページで拡張を開き、**GPUモデルを準備**を押します。
-2. 初回は約1.81GBのモデルを取得します。準備完了後、**ページ全体を翻訳**を押します。
-3. **原文に戻す**で取り消せます。翻訳中でも復元できます。
+1. 翻訳したいWebページで、拡張のアイコンをクリックします。
+2. **「GPUモデルを準備」**を押し、準備完了を待ちます。初回のみ約**1.81GB**のモデルを取得します。
+3. **「ページ全体を翻訳」**を押します。元に戻すときは**「原文に戻す」**を押します。
 
-GPUを利用できない場合は **CPUモデルを準備（低速）** を選んでください。モデル準備時の動作確認は自動で行います。ブラウザ再起動後はモデルを再準備しますが、保存済みモデルを再利用します。
+GPUを利用できない場合は **「CPUモデルを準備（低速）」**を選んでください。ブラウザを再起動した後はモデルの準備が必要ですが、取得済みのモデルを再利用します。
 
-## 必要な環境
+## 動作環境
 
-- Windows版Chrome 137以降（最新版推奨）
-- GPUモードではWebGPUとハードウェアアクセラレーションが必要
-- モデル保存用に約2GB以上の空きディスク容量と、推論用の追加RAM／VRAM
+| 項目 | 条件 |
+| --- | --- |
+| ブラウザ | Chrome 137以降（最新版推奨） |
+| Windows向け更新ツール | Windows PowerShell 5.1以降 |
+| GPUモード | WebGPUとハードウェアアクセラレーションが有効な環境 |
+| ストレージ | モデル保存用に約2GB以上の空き容量 |
+| メモリ | モデル推論用の追加RAM／VRAMが必要 |
 
 Windows / RTX 4070 12GBで実機検証しています。ソースからのビルドは他のOSでも可能ですが、同梱の更新ツールはWindows用です。
 
-## 機能と制限
+## 更新
 
-- 本文・見出し・リンク・ボタン・一部の表示属性を翻訳し、追加された文章も検出します。
-- リンク・強調・インラインコードを含む段落をまとめて翻訳し、元のリンクとコード表記を保持します。
-- コードブロック、入力済みの値、編集中の文章、非表示要素、翻訳禁止要素は変更しません。
-- Chrome内部ページ、ウェブストア、PDF、iframe、Shadow DOM内の文章は対象外です。
-- 最大1200件。複雑な構造や書式込み1200文字を超える段落はテキスト単位で処理します。
-- 専門用語・多義語の誤訳や、文脈による不自然な訳は残り得ます。ページの再読み込みや移動で、そのページの復元情報は消えます。
+次のファイルを実行して最新版を取得します。
 
-## トラブル時
+```text
+%LOCALAPPDATA%\PLaMoPageTranslate\Update-PLaMo.cmd
+```
 
-- **GPUを利用できない:** Chromeのハードウェアアクセラレーションを確認するか、CPUモードを使います。
-- **準備や翻訳に失敗する:** 拡張と対象ページを再読み込みし、モデルを再準備します。
-- **更新に失敗する:** 表示されたエラーを確認し、[リリースZIP](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)を再取得します。更新ツールの設定で以前の登録先も同期している場合、そのフォルダーも保持してください。
+完了後、`chrome://extensions/` で拡張を **再読み込み**し、翻訳対象のWebページも再読み込みしてください。更新先は常に同じフォルダーで、前の拡張ファイルは `backups/` に保存します。
 
-## データとライセンス
+**Chromeの再読み込みボタンだけでは、最新版のダウンロードは行われません。**
 
-本文は外部の翻訳APIへ送信しません。初回はHugging Faceからモデルを取得します。更新ツールはGitHubから拡張を取得します。モデルと翻訳結果はブラウザ内に保存します。
+## FAQ
 
-拡張は[MIT License](LICENSE)。wllama等のライセンスも配布物に同梱しています。モデルの重みは再配布せず、[公式モデルカード](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF)の利用条件に従って取得・使用します。
+<details>
+<summary><strong>翻訳する文章は外部に送信されますか？</strong></summary>
 
-[変更履歴](CHANGELOG.md) · [開発・検証手順](docs/development.md) · [段落翻訳の検証記録](docs/paragraph-translation.md)
+本文は外部の翻訳APIへ送信しません。モデルはブラウザ内で動作し、モデルと翻訳結果もブラウザ内に保存します。初回のモデル取得ではHugging Faceへ、拡張の更新ではGitHubへ通信します。
+
+</details>
+
+<details>
+<summary><strong>どんなページでも翻訳できますか？</strong></summary>
+
+通常のHTTP/HTTPSページが対象です。Chrome内部ページ、Chromeウェブストア、PDF、iframe、Shadow DOM内の文章には対応していません。
+
+コードブロック、入力済みの値、編集中の文章、非表示要素、翻訳禁止要素は変更しません。1回の翻訳は最大1200件です。複雑な構造や書式込み1200文字を超える段落は、テキスト単位で処理します。
+
+</details>
+
+<details>
+<summary><strong>専門用語や文章の訳が不自然になることはありますか？</strong></summary>
+
+あります。段落の文脈やリンクを保って翻訳しますが、専門用語・多義語の誤訳や不自然な表現は残り得ます。詳しくは[段落翻訳の検証記録](docs/paragraph-translation.md)を参照してください。
+
+</details>
+
+<details>
+<summary><strong>GPUが使えない・モデルの準備に失敗するときは？</strong></summary>
+
+Chromeのバージョンとハードウェアアクセラレーションを確認してください。GPUを利用できない環境ではCPUモードを使えます。
+
+準備や翻訳に失敗した場合は、拡張と対象ページを再読み込みし、モデルを再準備してください。ページの再読み込みや移動で、そのページの復元情報は消えます。
+
+</details>
+
+<details>
+<summary><strong>旧版から移行するとき、モデルは再取得されますか？</strong></summary>
+
+同じ登録先で更新する場合は、保存済みのモデルを再利用します。登録フォルダーを変更すると拡張IDが変わり、モデルの再取得が必要になる場合があります。新しい登録へ切り替える際は、旧版を無効にしてください。
+
+更新に失敗した場合は、[リリースZIP](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases/latest)を再取得してください。以前の登録先も同期する設定を使っている場合、そのフォルダーも保持してください。
+
+</details>
+
+## 開発
+
+Node.js 22を推奨します。
+
+```sh
+npm ci
+npm run build
+```
+
+生成された `dist/` をChromeへ読み込みます。テスト、実モデルでの検証、Windows向け更新ツール、リリースの手順は[開発ガイド](docs/development.md)を参照してください。
+
+不具合の報告や改善の提案は[Issues](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/issues)へ。Chromeのバージョン、GPU、エラーメッセージ、再現手順があると調査しやすくなります。
+
+## ライセンス・謝辞
+
+拡張本体は[MIT License](LICENSE)です。以下のプロジェクトを利用しています。
+
+- [PLaMo 3 Translate 2B](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF) — Preferred Networksの翻訳モデル
+- [wllama](https://github.com/ngxson/wllama) — ブラウザ向けのllama.cppバインディング
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — モデル推論ランタイム
+
+モデルの重みは同梱・再配布していません。モデルの利用には[公式モデルカード](https://huggingface.co/pfnet/plamo-3-translate-2b-GGUF)に記載された条件が適用されます。依存ライブラリのライセンスは配布物にも同梱しています。
+
+---
+
+[Releases](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/releases) · [変更履歴](CHANGELOG.md) · [開発ガイド](docs/development.md) · [Issues](https://github.com/Kaito-Rowing/PLaMo-Page-Translate/issues)
